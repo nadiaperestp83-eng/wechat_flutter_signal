@@ -27,10 +27,59 @@ class _RegisterPageState extends State<RegisterPage> {
   String localAvatarImgPath = '';
   bool _verificando = false;
 
+  String? _numeroComSmsEnviado;
+  bool _enviandoSms = false;
+
   @override
   void initState() {
     super.initState();
     _preencherNumeroPendente();
+    phoneF.addListener(_aoSairDoCampoTelefone);
+  }
+
+  @override
+  void dispose() {
+    phoneF.removeListener(_aoSairDoCampoTelefone);
+    super.dispose();
+  }
+
+  void _aoSairDoCampoTelefone() {
+    if (phoneF.hasFocus) return; // só age quando o campo PERDE o foco
+    _dispararEnvioSmsSeNecessario();
+  }
+
+  // Cobre o caso de quem chega nessa tela direto (ex: botão "Cadastre-se"
+  // da tela inicial), sem ter passado pelo login_page.dart antes — sem
+  // isso, o Signal nunca fica sabendo que precisa mandar o SMS.
+  Future<void> _dispararEnvioSmsSeNecessario() async {
+    final numero = phoneC.text.trim();
+    if (numero.isEmpty || numero == _numeroComSmsEnviado || _enviandoSms) return;
+
+    setState(() => _enviandoSms = true);
+    try {
+      final resultado = await ImLoginManager.requestCode(numero);
+      if (resultado['sucesso'] == false) {
+        if (resultado['precisaCaptcha'] == true) {
+          showToast(
+            'O Signal pediu verificação extra pra esse número. '
+            'Abra ${resultado['captchaUrl']} e tente de novo.',
+          );
+        } else {
+          showToast('Falha ao enviar SMS: ${resultado['erro'] ?? 'erro desconhecido'}');
+        }
+        return;
+      }
+      _numeroComSmsEnviado = numero;
+      showToast(
+        resultado['jaRegistrado'] == true
+            ? 'Esse número já está registrado — digite o código já recebido.'
+            : 'Enviamos um SMS com o código de verificação.',
+      );
+    } catch (e) {
+      showToast('Falha ao falar com o servidor Signal: $e');
+    } finally {
+      if (mounted) setState(() => _enviandoSms = false);
+    }
   }
 
   // O número já foi salvo em login_handle.dart (ImLoginManager.login) antes
@@ -39,6 +88,7 @@ class _RegisterPageState extends State<RegisterPage> {
     final numeroPendente = await SharedUtil.instance.getString(Keys.account);
     if (numeroPendente != null && numeroPendente.isNotEmpty) {
       setState(() => phoneC.text = numeroPendente);
+      _numeroComSmsEnviado = numeroPendente; // já foi enviado por login_handle.dart
     }
   }
 
