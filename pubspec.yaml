@@ -15,7 +15,7 @@ dependencies:
     sdk: flutter
   cupertino_icons: 1.0.8 #IOS风格材料图标
 #  tencent_cloud_chat_sdk: 8.8.7373 #腾讯云im #鸿蒙专属
-  tencent_cloud_chat_sdk: 8.3.6498 #腾讯云im
+  tencent_cloud_chat_sdk: 8.3.6498 #usado só pelas classes de dados (V2TimMessage etc), sem nuvem Tencent
   archive: 3.6.1 #腾讯云im生成token需要
   shared_preferences: 2.3.3 #持久化存储
 #  shared_preferences: #鸿蒙专属
@@ -56,6 +56,11 @@ dependencies:
   photo_manager: 3.5.0 #wechat_assets_picker的配件
   extended_image: 9.0.7 #扩展图片
   platform: 3.1.0 #平台
+
+  # ===== Adicionado pra integração com o Signal =====
+  http: ^1.2.0 #chamadas HTTP pras Edge Functions do Supabase (bridge)
+  hive: ^2.2.3 #armazenamento local de mensagens/conversas/contatos
+  hive_flutter: ^1.1.0 #integração do Hive com o ciclo de vida do Flutter
 
 dependency_overrides:
   js: 0.7.1
@@ -164,7 +169,6 @@ flutter:
     - assets/images/discover/ff_Icon_browse.webp
     - assets/images/discover/ff_Icon_nearby.webp
     - assets/images/discover/ff_Icon_qr_code.webp
-    - assets/images/discover/ff_Icon_search.webp
     - assets/images/discover/game_center_h5.webp
     - assets/images/discover/mini_program.webp
     - assets/images/emoji/
