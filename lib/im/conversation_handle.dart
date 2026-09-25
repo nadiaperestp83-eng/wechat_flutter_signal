@@ -1,17 +1,13 @@
-import 'package:tencent_cloud_chat_sdk/manager/v2_tim_manager.dart';
-import 'package:tencent_cloud_chat_sdk/models/v2_tim_callback.dart';
+import 'package:tencent_cloud_chat_sdk/enum/message_elem_type.dart';
 import 'package:tencent_cloud_chat_sdk/models/v2_tim_conversation.dart';
-import 'package:tencent_cloud_chat_sdk/models/v2_tim_conversation_filter.dart';
-import 'package:tencent_cloud_chat_sdk/models/v2_tim_conversation_result.dart';
-import 'package:tencent_cloud_chat_sdk/models/v2_tim_value_callback.dart';
-import 'package:wechat_flutter/tools/wechat_flutter.dart';
+import 'package:tencent_cloud_chat_sdk/models/v2_tim_message.dart';
+import 'package:tencent_cloud_chat_sdk/models/v2_tim_text_elem.dart';
+
+import 'local_store.dart';
 
 Future<List<V2TimConversation?>?> getConversationsListData() async {
-  final V2TimValueCallback<V2TimConversationResult> result =
-      await V2TIMManager()
-          .getConversationManager()
-          .getConversationList(nextSeq: '0', count: 100);
-  return result.data?.conversationList ?? [];
+  final salvas = SignalLocalStore.getConversations();
+  return salvas.map(_mapaParaV2TimConversation).toList();
 }
 
 Future<dynamic> deleteConversationAndLocalMsgModel(String id, int type) async {
@@ -20,47 +16,48 @@ Future<dynamic> deleteConversationAndLocalMsgModel(String id, int type) async {
 }
 
 Future<dynamic> delLocalMsg(String identifier, int type) async {
-  final V2TimCallback callback = await V2TIMManager()
-      .getMessageManager()
-      .deleteMessages(msgIDs: [identifier]);
-  final bool success = callback.code == 0;
-  if (!success) {
-    showToast(callback.desc);
-  }
-  return success;
+  await SignalLocalStore.deleteMessages(identifier);
+  return true;
 }
 
 Future<dynamic> delConversationModel(String identifier, int type) async {
-  final V2TimCallback callback = await V2TIMManager()
-      .getConversationManager()
-      .deleteConversation(conversationID: identifier);
-  final bool success = callback.code == 0;
-  if (!success) {
-    showToast(callback.desc);
-  }
-  return success;
+  await SignalLocalStore.deleteConversation(identifier);
+  return true;
 }
 
-//获取未读消息数量
 Future<int> getUnreadMessageNumModel(int type, String id) async {
-  final V2TimValueCallback<int> result = await V2TIMManager()
-      .getConversationManager()
-      .getUnreadMessageCountByFilter(
-        filter: V2TimConversationFilter(
-          conversationType: type,
-          conversationGroup: id,
-        ),
-      );
-  return result.data ?? 0;
+  final conversas = SignalLocalStore.getConversations();
+  final match = conversas.where((c) => c['conversationID'] == id);
+  if (match.isEmpty) return 0;
+  return (match.first['unreadCount'] as int?) ?? 0;
 }
 
-//设置消息为已读
 Future<void> setReadMessageModel(int type, String id) async {
-  final V2TimCallback callback = await V2TIMManager()
-      .getConversationManager()
-      .cleanConversationUnreadMessageCount(
-          conversationID: id, cleanTimestamp: 0, cleanSequence: 0);
-  if (callback.code != 0) {
-    showToast(callback.desc);
-  }
+  await SignalLocalStore.setUnreadCount(id, 0);
+}
+
+V2TimConversation _mapaParaV2TimConversation(Map<String, dynamic> c) {
+  final ultimaMensagemMapa = c['lastMessage'] as Map<String, dynamic>?;
+
+  return V2TimConversation(
+    conversationID: c['conversationID'] as String,
+    type: c['type'] as int?,
+    userID: c['userID'] as String?,
+    groupID: c['groupID'] as String?,
+    showName: c['showName'] as String? ?? c['userID'] as String?,
+    faceUrl: c['faceUrl'] as String?,
+    unreadCount: c['unreadCount'] as int?,
+    orderkey: c['orderkey'] as int?,
+    lastMessage: ultimaMensagemMapa != null
+        ? V2TimMessage(
+            msgID: ultimaMensagemMapa['msgID'] as String?,
+            timestamp: ultimaMensagemMapa['timestamp'] as int?,
+            sender: ultimaMensagemMapa['sender'] as String?,
+            isSelf: ultimaMensagemMapa['isSelf'] as bool? ?? false,
+            elemType: (ultimaMensagemMapa['elemType'] as int?) ??
+                MessageElemType.V2TIM_ELEM_TYPE_TEXT,
+            textElem: V2TimTextElem(text: ultimaMensagemMapa['text'] as String?),
+          )
+        : null,
+  );
 }
