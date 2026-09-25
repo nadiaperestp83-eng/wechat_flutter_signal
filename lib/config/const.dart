@@ -48,7 +48,11 @@ const defContentImg =
     'https://www.runoob.com/wp-content/uploads/2015/06/image_1c58e950q14da167k1nqpu2hn5e9.png';
 
 // ===== Config do bridge Signal (adicionado) =====
-// URL base das suas Edge Functions do Supabase, ex:
-// 'https://SEU-PROJETO.supabase.co/functions/v1'
-const String signalFunctionsBaseUrl = 'https://SEU-PROJETO.supabase.co/functions/v1';
-const String signalSupabaseAnonKey = 'COLE_SUA_ANON_KEY_AQUI';
+// Nada de chave hardcoded aqui — os valores reais vêm do GitHub Secrets,
+// injetados em tempo de build via --dart-define (ver o workflow .github/
+// workflows/build.yml). Em dev local, rode com:
+//   flutter run --dart-define=SIGNAL_FUNCTIONS_BASE_URL=https://SEU-PROJETO.supabase.co/functions/v1 --dart-define=SIGNAL_SUPABASE_ANON_KEY=sua_anon_key
+const String signalFunctionsBaseUrl =
+    String.fromEnvironment('SIGNAL_FUNCTIONS_BASE_URL', defaultValue: '');
+const String signalSupabaseAnonKey =
+    String.fromEnvironment('SIGNAL_SUPABASE_ANON_KEY', defaultValue: '');
