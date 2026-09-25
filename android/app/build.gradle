@@ -37,7 +37,7 @@ android {
 
     defaultConfig {
         applicationId "com.example.wechat_flutter"
-        minSdkVersion 23
+        minSdkVersion 24 // atualizado para 24 (exigido pelos plugins atuais)
         targetSdkVersion 35 // atualizado (era 33)
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
