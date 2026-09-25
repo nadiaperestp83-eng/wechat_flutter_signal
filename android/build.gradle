@@ -1,14 +1,13 @@
 buildscript {
-    ext.kotlin_version = '1.9.24' // Atualizado (era 1.7.22)
+    ext.kotlin_version = '1.9.24' // atualizado (era 1.7.22)
 
     repositories {
         google()
-        mavenCentral()
+        mavenCentral() // jcenter() removido — está desativado desde 2022
     }
 
     dependencies {
-        // Atualizado (era 7.2.2) — compatível com Gradle 8.7 e Kotlin 1.9.24
-        classpath 'com.android.tools.build:gradle:8.3.2'
+        classpath 'com.android.tools.build:gradle:8.5.0' // atualizado (era 7.2.2)
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
@@ -17,9 +16,6 @@ allprojects {
     repositories {
         google()
         mavenCentral()
-        // jcenter() removido: o serviço foi desativado pelo JFrog em 2024,
-        // manter essa linha só atrasa o build tentando resolver um servidor
-        // que não responde mais.
     }
 }
 
