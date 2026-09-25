@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:wechat_flutter/config/provider_config.dart';
 import 'package:wechat_flutter/app.dart';
 import 'package:wechat_flutter/tools/data/data.dart';
+import 'package:wechat_flutter/im/local_store.dart';
 
 import 'config/storage_manager.dart';
 
@@ -16,6 +17,9 @@ void main() async {
 
   /// 配置初始化
   await StorageManager.init();
+
+  /// Armazenamento local do Signal (Hive) — mensagens/conversas/contatos
+  await SignalLocalStore.init();
 
   /// APP入口并配置Provider
   runApp(ProviderConfig.getInstance().getGlobal(MyApp()));
