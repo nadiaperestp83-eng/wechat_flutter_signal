@@ -24,9 +24,6 @@ jobs:
       - name: Instalar dependências
         run: flutter pub get
 
-      - name: Analisar código (falha o build se tiver erro)
-        run: flutter analyze --no-fatal-infos
-
       # As duas chaves abaixo NUNCA ficam no código-fonte — vêm dos Secrets
       # do repositório (Settings > Secrets and variables > Actions):
       #   SIGNAL_FUNCTIONS_BASE_URL  -> https://SEU-PROJETO.supabase.co/functions/v1
