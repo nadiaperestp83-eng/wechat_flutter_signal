@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:tencent_cloud_chat_sdk/models/v2_tim_friend_info.dart';
 import 'package:tencent_cloud_chat_sdk/models/v2_tim_user_full_info.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
@@ -5,8 +6,70 @@ import 'package:wechat_flutter/tools/wechat_flutter.dart';
 import 'local_store.dart';
 import 'signal_bridge_client.dart';
 
-/// Mesma assinatura que contacts.dart já chama.
-Future<List<V2TimFriendInfo>> getContactsFriends() async {
+// Mesmo typedef do original — friend_item_dialog.dart importa isso
+// diretamente de cá.
+typedef OnSuCc = void Function(bool v);
+
+/// Mesma assinatura original: addFriend(userName, context, {suCc}).
+/// userName aqui é o número de telefone a adicionar.
+Future<dynamic> addFriend(String userName, BuildContext context,
+    {OnSuCc? suCc}) async {
+  final String? meuNumero = await SharedUtil.instance.getString(Keys.account);
+  if (meuNumero == null) {
+    showToast('Sessão inválida');
+    return;
+  }
+
+  try {
+    final statusResultado = await SignalBridgeClient.getUserStatus(
+      ownerPhone: meuNumero,
+      recipient: userName,
+    );
+    final bool registrado = statusResultado['registrado'] == true;
+
+    if (!registrado) {
+      showToast('Esse número não está no Signal');
+      return;
+    }
+
+    await SignalBridgeClient.addContact(ownerPhone: meuNumero, recipient: userName);
+    await SignalLocalStore.upsertContact({
+      'phone': userName,
+      'name': null,
+      'isRegistered': true,
+    });
+
+    showToast('Adicionado com sucesso');
+
+    if (suCc == null) {
+      popToHomePage(context);
+    } else {
+      suCc(true);
+    }
+  } catch (e) {
+    showToast('Falha ao adicionar: $e');
+  }
+}
+
+/// Mesma assinatura original: delFriend(userName, context, {suCc}).
+Future<dynamic> delFriend(String userName, BuildContext context,
+    {OnSuCc? suCc}) async {
+  await SignalLocalStore.deleteContact(userName);
+  showToast('Removido com sucesso');
+
+  if (suCc == null) {
+    popToHomePage(context);
+  } else {
+    suCc(true);
+  }
+  return true;
+}
+
+/// Mesma assinatura original: getContactsFriends(userName). O parâmetro
+/// existe pra manter compatibilidade com quem chama, mas como o cache
+/// local (Hive) é de uma conta só por aparelho, não precisamos filtrar
+/// por ele.
+Future<List<V2TimFriendInfo>> getContactsFriends(String userName) async {
   final salvos = SignalLocalStore.getContacts();
   return salvos
       .where((c) => !(c['phone'] as String).startsWith('self:'))
@@ -21,39 +84,9 @@ Future<List<V2TimFriendInfo>> getContactsFriends() async {
       .toList();
 }
 
-/// Verifica no Signal se o número existe e salva como contato local.
-Future<Map<String, dynamic>> addFriend(String recipient, {String? name}) async {
-  final String? meuNumero = await SharedUtil.instance.getString(Keys.account);
-  if (meuNumero == null) {
-    return {'sucesso': false, 'erro': 'sessão inválida'};
-  }
-
-  final statusResultado =
-      await SignalBridgeClient.getUserStatus(ownerPhone: meuNumero, recipient: recipient);
-  final bool registrado = statusResultado['registrado'] == true;
-
-  if (!registrado) {
-    return {'sucesso': false, 'erro': 'Esse número não está no Signal'};
-  }
-
-  await SignalBridgeClient.addContact(ownerPhone: meuNumero, recipient: recipient, name: name);
-
-  await SignalLocalStore.upsertContact({
-    'phone': recipient,
-    'name': name,
-    'isRegistered': true,
-  });
-
-  return {'sucesso': true};
-}
-
-Future<void> delFriend(String userID) async {
-  await SignalLocalStore.deleteContact(userID);
-}
-
-/// Grupos: sem suporte no bridge signal-cli atual (era stub no original
-/// também — mantido assim de propósito, não é regressão).
-Future<dynamic> createGroupChat(String name, List<String> memberList) async {
+/// Mesma assinatura original: createGroupChat(personList, {name}).
+/// Grupos não são suportados pelo bridge signal-cli atual.
+Future<bool> createGroupChat(List<String> personList, {String? name}) async {
   showToast('Criação de grupo ainda não suportada pelo bridge do Signal');
-  return null;
+  return false;
 }
