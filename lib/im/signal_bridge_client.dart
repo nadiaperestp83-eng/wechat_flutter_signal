@@ -15,6 +15,14 @@ class SignalBridgeClient {
     String funcao,
     Map<String, dynamic> body,
   ) async {
+    if (signalFunctionsBaseUrl.isEmpty || signalSupabaseAnonKey.isEmpty) {
+      throw SignalBridgeException(
+        'App compilado sem SIGNAL_FUNCTIONS_BASE_URL/SIGNAL_SUPABASE_ANON_KEY. '
+        'Verifique os --dart-define do build (GitHub Secrets).',
+        0,
+      );
+    }
+
     final uri = Uri.parse('$signalFunctionsBaseUrl/$funcao');
     final resposta = await http
         .post(
