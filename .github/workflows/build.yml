@@ -1,0 +1,51 @@
+name: Build APK
+
+# Roda a cada push na main e também permite disparo manual pela aba Actions.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Instalar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+          cache: true
+
+      - name: Instalar dependências
+        run: flutter pub get
+
+      - name: Analisar código (falha o build se tiver erro)
+        run: flutter analyze --no-fatal-infos
+
+      # As duas chaves abaixo NUNCA ficam no código-fonte — vêm dos Secrets
+      # do repositório (Settings > Secrets and variables > Actions):
+      #   SIGNAL_FUNCTIONS_BASE_URL  -> https://SEU-PROJETO.supabase.co/functions/v1
+      #   SIGNAL_SUPABASE_ANON_KEY   -> anon public key do Supabase
+      - name: Build APK (release)
+        run: |
+          flutter build apk --release \
+            --dart-define=SIGNAL_FUNCTIONS_BASE_URL=${{ secrets.SIGNAL_FUNCTIONS_BASE_URL }} \
+            --dart-define=SIGNAL_SUPABASE_ANON_KEY=${{ secrets.SIGNAL_SUPABASE_ANON_KEY }}
+
+      - name: Publicar APK como artefato do workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+# Observação: esse APK sai assinado com a chave de debug do Flutter (serve
+# pra testar no aparelho, instalar via ADB, distribuir internamente). Pra
+# publicar na Play Store é preciso configurar assinatura de release própria
+# (keystore) — não incluí isso aqui pra não presumir que você já quer
+# publicar; me avise se quiser que eu adicione esse passo.
