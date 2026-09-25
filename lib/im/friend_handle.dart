@@ -1,91 +1,59 @@
-import 'package:flutter/material.dart';
-import 'package:tencent_cloud_chat_sdk/enum/friend_type_enum.dart';
-import 'package:tencent_cloud_chat_sdk/enum/group_member_role_enum.dart';
-import 'package:tencent_cloud_chat_sdk/enum/group_type.dart';
-import 'package:tencent_cloud_chat_sdk/manager/v2_tim_manager.dart';
 import 'package:tencent_cloud_chat_sdk/models/v2_tim_friend_info.dart';
-import 'package:tencent_cloud_chat_sdk/models/v2_tim_friend_operation_result.dart';
-import 'package:tencent_cloud_chat_sdk/models/v2_tim_group_member.dart';
-import 'package:tencent_cloud_chat_sdk/models/v2_tim_value_callback.dart';
+import 'package:tencent_cloud_chat_sdk/models/v2_tim_user_full_info.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 
-typedef OnSuCc = void Function(bool v);
+import 'local_store.dart';
+import 'signal_bridge_client.dart';
 
-Future<dynamic> addFriend(String userName, BuildContext context,
-    {OnSuCc? suCc}) async {
-  try {
-    final V2TimValueCallback<V2TimFriendOperationResult> result =
-        await V2TIMManager().getFriendshipManager().addFriend(
-            userID: userName, addType: FriendTypeEnum.V2TIM_FRIEND_TYPE_BOTH);
-    if (result.data?.resultCode == 0) {
-      showToast('添加成功');
-      return;
-    }
-    if (result.toString().contains('Friend_Exist')) {
-      showToast('朋友已存在');
-    } else if (result.toString().contains('30014')) {
-      showToast('对方好友人数上限');
-      return;
-    } else if (result.toString().contains('30003')) {
-      showToast('添加的这个账号不存在');
-      return;
-    } else {
-      showToast('添加成功');
-    }
-    if (suCc == null) {
-      popToHomePage(context);
-    } else {
-      suCc(true);
-    }
-  } on PlatformException {
-    debugPrint('Dim添加好友  失败');
+/// Mesma assinatura que contacts.dart já chama.
+Future<List<V2TimFriendInfo>> getContactsFriends() async {
+  final salvos = SignalLocalStore.getContacts();
+  return salvos
+      .where((c) => !(c['phone'] as String).startsWith('self:'))
+      .map((c) => V2TimFriendInfo(
+            userID: c['phone'] as String,
+            friendRemark: c['name'] as String?,
+            userProfile: V2TimUserFullInfo(
+              userID: c['phone'] as String,
+              nickName: (c['name'] as String?) ?? (c['phone'] as String),
+            ),
+          ))
+      .toList();
+}
+
+/// Verifica no Signal se o número existe e salva como contato local.
+Future<Map<String, dynamic>> addFriend(String recipient, {String? name}) async {
+  final String? meuNumero = await SharedUtil.instance.getString(Keys.account);
+  if (meuNumero == null) {
+    return {'sucesso': false, 'erro': 'sessão inválida'};
   }
-}
 
-Future<dynamic> delFriend(String userName, BuildContext context,
-    {OnSuCc? suCc}) async {
-  try {
-    final V2TimValueCallback<List<V2TimFriendOperationResult>> result =
-        await V2TIMManager().getFriendshipManager().deleteFromFriendList(
-            userIDList: <String>[userName],
-            deleteType: FriendTypeEnum.V2TIM_FRIEND_TYPE_BOTH);
-    if (result.code == 0) {
-      showToast('删除成功');
-    } else {
-      showToast(result.desc);
-    }
+  final statusResultado =
+      await SignalBridgeClient.getUserStatus(ownerPhone: meuNumero, recipient: recipient);
+  final bool registrado = statusResultado['registrado'] == true;
 
-    if (suCc == null) {
-      popToHomePage(context);
-    } else {
-      suCc(true);
-    }
-
-    return result;
-  } on PlatformException {
-    debugPrint('删除好友  失败');
+  if (!registrado) {
+    return {'sucesso': false, 'erro': 'Esse número não está no Signal'};
   }
+
+  await SignalBridgeClient.addContact(ownerPhone: meuNumero, recipient: recipient, name: name);
+
+  await SignalLocalStore.upsertContact({
+    'phone': recipient,
+    'name': name,
+    'isRegistered': true,
+  });
+
+  return {'sucesso': true};
 }
 
-Future<List<V2TimFriendInfo>> getContactsFriends(String userName) async {
-  final V2TimValueCallback<List<V2TimFriendInfo>> result =
-      await V2TIMManager().getFriendshipManager().getFriendList();
-  return result.data ?? <V2TimFriendInfo>[];
+Future<void> delFriend(String userID) async {
+  await SignalLocalStore.deleteContact(userID);
 }
 
-Future<bool> createGroupChat(List<String> personList, {String? name}) async {
-  final V2TimValueCallback<String> call =
-      await V2TIMManager().getGroupManager().createGroup(
-            groupType: GroupType.Public,
-            groupName: name ?? '',
-            memberList: personList.map(
-              (String e) {
-                return V2TimGroupMember(
-                  userID: e,
-                  role: GroupMemberRoleTypeEnum.V2TIM_GROUP_MEMBER_ROLE_MEMBER,
-                );
-              },
-            ).toList(),
-          );
-  return call.code == 0;
+/// Grupos: sem suporte no bridge signal-cli atual (era stub no original
+/// também — mantido assim de propósito, não é regressão).
+Future<dynamic> createGroupChat(String name, List<String> memberList) async {
+  showToast('Criação de grupo ainda não suportada pelo bridge do Signal');
+  return null;
 }
