@@ -18,6 +18,23 @@ class ImLoginManager {
   /// método pra não quebrar quem já chama ImLoginManager.init em algum lugar.
   static Future<void> init(BuildContext context) async {}
 
+  /// Extraído pra ser reaproveitado tanto pelo login_page.dart (via login())
+  /// quanto pela RegisterPage direto (quando o usuário chega por ali sem
+  /// passar pelo login_page.dart — ex: botão "Cadastre-se" da tela inicial).
+  /// Garante que o número está registrado no signal-cli e que o SMS foi
+  /// disparado, sem duplicar envio se já está registrado.
+  static Future<Map<String, dynamic>> requestCode(String phoneRaw) async {
+    final String phone = _normalizarTelefone(phoneRaw);
+
+    final statusAtual = await SignalBridgeClient.status(phone);
+    if (statusAtual['registrado'] == true) {
+      return {'sucesso': true, 'jaRegistrado': true, 'phone': phone};
+    }
+
+    final resultado = await SignalBridgeClient.register(phone);
+    return {...resultado, 'phone': phone};
+  }
+
   /// Chamado pelo botão "próximo passo" da tela de login com o número
   /// digitado. Registra o número no Signal (via bridge) e manda o usuário
   /// pra tela de código (reaproveitando RegisterPage).
@@ -25,33 +42,27 @@ class ImLoginManager {
     final String phone = _normalizarTelefone(phoneRaw);
 
     try {
-      final statusAtual = await SignalBridgeClient.status(phone);
-      final bool jaRegistrado = statusAtual['registrado'] == true;
-
       // Já verificado localmente neste aparelho -> pula direto pra dentro.
       final String? sessaoAtual = await SharedUtil.instance.getString(Keys.account);
       final bool sessaoValida =
           sessaoAtual == phone && await SharedUtil.instance.getBoolean(Keys.hasLogged);
 
-      if (jaRegistrado && sessaoValida) {
+      if (sessaoValida) {
         await Get.offAll(() => RootPage());
         return;
       }
 
-      if (!jaRegistrado) {
-        final resultadoRegistro = await SignalBridgeClient.register(phone);
-        if (resultadoRegistro['sucesso'] == false &&
-            resultadoRegistro['jaRegistrado'] != true) {
-          if (resultadoRegistro['precisaCaptcha'] == true) {
-            showToast(
-              'O Signal pediu verificação extra (captcha) pra esse número. '
-              'Abra ${resultadoRegistro['captchaUrl']} e tente de novo depois.',
-            );
-            return;
-          }
-          showToast('Falha ao registrar: ${resultadoRegistro['erro'] ?? 'erro desconhecido'}');
+      final resultadoRegistro = await requestCode(phone);
+      if (resultadoRegistro['sucesso'] == false) {
+        if (resultadoRegistro['precisaCaptcha'] == true) {
+          showToast(
+            'O Signal pediu verificação extra (captcha) pra esse número. '
+            'Abra ${resultadoRegistro['captchaUrl']} e tente de novo depois.',
+          );
           return;
         }
+        showToast('Falha ao registrar: ${resultadoRegistro['erro'] ?? 'erro desconhecido'}');
+        return;
       }
 
       // Guarda o número "pendente" (aguardando código) — RegisterPage lê
