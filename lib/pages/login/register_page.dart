@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:wechat_flutter/im/login_handle.dart';
 import 'package:wechat_flutter/provider/login_model.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 import 'package:wechat_flutter/ui/view/edit_view.dart';
@@ -24,6 +25,22 @@ class _RegisterPageState extends State<RegisterPage> {
   TextEditingController pWC = new TextEditingController();
 
   String localAvatarImgPath = '';
+  bool _verificando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _preencherNumeroPendente();
+  }
+
+  // O número já foi salvo em login_handle.dart (ImLoginManager.login) antes
+  // de mandar o usuário pra cá — só pré-preenchemos o campo por conveniência.
+  Future<void> _preencherNumeroPendente() async {
+    final numeroPendente = await SharedUtil.instance.getString(Keys.account);
+    if (numeroPendente != null && numeroPendente.isNotEmpty) {
+      setState(() => phoneC.text = numeroPendente);
+    }
+  }
 
   _openGallery() async {
     XFile? img = await ImagePicker().pickImage(source: ImageSource.gallery);
@@ -41,7 +58,7 @@ class _RegisterPageState extends State<RegisterPage> {
       new Padding(
         padding: EdgeInsets.only(
             left: 5.0, top: mainSpace * 3, bottom: mainSpace * 2),
-        child: new Text(S.of(context).numberRegister,
+        child: new Text('Digite o código enviado por SMS',
             style: TextStyle(fontSize: 25.0)),
       ),
       new Row(
@@ -110,9 +127,10 @@ class _RegisterPageState extends State<RegisterPage> {
         focusNode: phoneF,
         onTap: () => setState(() {}),
       ),
+      // Campo reaproveitado: era "senha", agora é o código do SMS.
       new EditView(
-        label: S.of(context).passWord,
-        hint: S.of(context).pwTip,
+        label: 'Código SMS',
+        hint: '000000',
         controller: pWC,
         focusNode: pWF,
         bottomLineColor:
@@ -157,7 +175,7 @@ class _RegisterPageState extends State<RegisterPage> {
         ],
       ),
       new ComMomButton(
-        text: S.of(context).register,
+        text: _verificando ? 'Verificando...' : 'Verificar',
         style: TextStyle(
             color:
                 pWC.text == '' ? Colors.grey.withOpacity(0.8) : Colors.white),
@@ -165,14 +183,19 @@ class _RegisterPageState extends State<RegisterPage> {
         color: pWC.text == ''
             ? Color.fromRGBO(226, 226, 226, 1.0)
             : Color.fromRGBO(8, 191, 98, 1.0),
-        onTap: () {
-          if (!strNoEmpty(pWC.text)) return;
-          if (!GetUtils.isPhoneNumber(phoneC.text)) {
-            showToast('请输入正确的手机号');
+        onTap: () async {
+          if (_verificando) return;
+          if (!strNoEmpty(phoneC.text)) {
+            showToast('Digite o número de telefone');
             return;
           }
-          showToast('注册成功');
-          popToRootPage();
+          if (!strNoEmpty(pWC.text)) {
+            showToast('Digite o código recebido por SMS');
+            return;
+          }
+          setState(() => _verificando = true);
+          await ImLoginManager.verify(phoneC.text, pWC.text, context);
+          if (mounted) setState(() => _verificando = false);
         },
       ),
     ];
