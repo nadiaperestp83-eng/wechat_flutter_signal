@@ -33,7 +33,7 @@ class SignalBridgeClient {
           },
           body: jsonEncode(body),
         )
-        .timeout(const Duration(seconds: 25));
+        .timeout(const Duration(seconds: 90)); // Render free pode demorar a acordar
 
     final dynamic decodificado =
         resposta.body.isNotEmpty ? jsonDecode(resposta.body) : <String, dynamic>{};
