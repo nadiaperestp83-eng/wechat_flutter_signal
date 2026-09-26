@@ -6,7 +6,7 @@ class LoginModel extends ChangeNotifier {
 
   late LoginLogic logic;
 
-  String area = '中国大陆（+86）';
+  String area = 'Brasil  (+55)';
 
   LoginModel() {
     logic = LoginLogic(this);
