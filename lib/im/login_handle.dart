@@ -113,6 +113,7 @@ class ImLoginManager {
 
   static String _normalizarTelefone(String texto) {
     final apenasDigitos = texto.replaceAll(RegExp(r'[^0-9+]'), '');
-    return apenasDigitos.startsWith('+') ? apenasDigitos : '+$apenasDigitos';
+    if (apenasDigitos.startsWith('+')) return apenasDigitos;
+    return '+55$apenasDigitos'; // assume Brasil quando não vem "+"
   }
 }
