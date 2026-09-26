@@ -5,7 +5,7 @@ name: Keep Supabase Awake
 # da janela de 7 dias — pra ele nunca pausar sozinho.
 on:
   schedule:
-    - cron: '0 12 * * *' # todo dia às 12:00 UTC
+    - cron: '*/10 * * * *' # a cada 10 min — cobre Render (sleep em 15min) e Supabase (pausa em 7 dias) juntos
   workflow_dispatch: {} # também dá pra disparar manualmente na aba Actions
 
 jobs:
@@ -18,6 +18,11 @@ jobs:
             "https://qsmswvhfqaeebhxtfqwh.supabase.co/rest/v1/" \
             -H "apikey: ${{ secrets.SIGNAL_SUPABASE_ANON_KEY }}")
           echo "Resposta do Supabase: HTTP $codigo"
-          # Qualquer resposta (mesmo 401/404) já conta como atividade de
-          # API pro Supabase não considerar o projeto inativo — não
-          # precisamos de sucesso, só de tráfego real chegando.
+
+      - name: Pingar o Render (/health)
+        run: |
+          codigo=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://signal-bridge-dockerfile.onrender.com/health")
+          echo "Resposta do Render: HTTP $codigo"
+          # Qualquer resposta (mesmo erro) já conta como atividade — o
+          # objetivo é só manter os dois serviços acordados.
