@@ -29,6 +29,17 @@ class _RegisterPageState extends State<RegisterPage> {
 
   String? _numeroComSmsEnviado;
   bool _enviandoSms = false;
+  final List<String> _debugLog = [];
+
+  void _log(String linha) {
+    final hora = DateTime.now().toIso8601String().substring(11, 19);
+    debugPrint('[SignalDebug $hora] $linha');
+    if (mounted) {
+      setState(() => _debugLog.add('$hora  $linha'));
+    } else {
+      _debugLog.add('$hora  $linha');
+    }
+  }
 
   @override
   void initState() {
@@ -62,6 +73,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
   void _aoSairDoCampoTelefone() {
     if (phoneF.hasFocus) return; // só age quando o campo PERDE o foco
+    _log('Campo Phone perdeu o foco (texto: "${phoneC.text}")');
     _dispararEnvioSmsSeNecessario();
   }
 
@@ -69,14 +81,26 @@ class _RegisterPageState extends State<RegisterPage> {
   // da tela inicial), sem ter passado pelo login_page.dart antes — sem
   // isso, o Signal nunca fica sabendo que precisa mandar o SMS.
   Future<void> _dispararEnvioSmsSeNecessario() async {
-    if (!strNoEmpty(phoneC.text)) return;
+    if (!strNoEmpty(phoneC.text)) {
+      _log('Campo Phone vazio — nada a fazer.');
+      return;
+    }
     final numero = _numeroCompleto(context);
-    if (numero == _numeroComSmsEnviado || _enviandoSms) return;
+    if (numero == _numeroComSmsEnviado) {
+      _log('SMS já foi pedido pra $numero antes — não repete.');
+      return;
+    }
+    if (_enviandoSms) {
+      _log('Já tem um pedido em andamento — ignorando toque duplicado.');
+      return;
+    }
 
+    _log('=== Iniciando fluxo pra $numero ===');
     showToast('Registrando número no Signal...');
     setState(() => _enviandoSms = true);
     try {
-      final resultado = await ImLoginManager.requestCode(numero);
+      final resultado = await ImLoginManager.requestCode(numero, onLog: _log);
+      _log('Resultado final: $resultado');
       if (resultado['sucesso'] == false) {
         if (resultado['precisaCaptcha'] == true) {
           showToast(
@@ -94,7 +118,9 @@ class _RegisterPageState extends State<RegisterPage> {
             ? 'Esse número já está registrado — digite o código já recebido.'
             : 'Enviamos um SMS com o código de verificação.',
       );
-    } catch (e) {
+    } catch (e, stack) {
+      _log('EXCEÇÃO: $e');
+      _log('$stack');
       showToast('Falha ao falar com o servidor Signal: $e');
     } finally {
       if (mounted) setState(() => _enviandoSms = false);
@@ -275,6 +301,37 @@ class _RegisterPageState extends State<RegisterPage> {
           await ImLoginManager.verify(_numeroCompleto(context), pWC.text, context);
           if (mounted) setState(() => _verificando = false);
         },
+      ),
+      new SizedBox(height: 16.0),
+      // Painel de debug — mostra exatamente o que o app está fazendo,
+      // passo a passo, sem depender de log do Render/GitHub.
+      new Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(10.0),
+        decoration: BoxDecoration(
+          color: Colors.black87,
+          borderRadius: BorderRadius.circular(8.0),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Debug (toque e segure pra selecionar/copiar):',
+              style: TextStyle(color: Colors.white54, fontSize: 11.0),
+            ),
+            const SizedBox(height: 6.0),
+            SelectableText(
+              _debugLog.isEmpty
+                  ? '(nada ainda — saia do campo Phone ou toque em Verificar)'
+                  : _debugLog.join('\n'),
+              style: const TextStyle(
+                color: Colors.greenAccent,
+                fontSize: 11.0,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ],
+        ),
       ),
     ];
 
