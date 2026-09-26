@@ -43,6 +43,23 @@ class _RegisterPageState extends State<RegisterPage> {
     super.dispose();
   }
 
+  // Combina o código do país escolhido no seletor "Country" com os dígitos
+  // do campo "Phone" — o usuário não precisa mais digitar "+55" na mão.
+  // Se o texto já vier com o código incluso (ex: número pré-preenchido
+  // vindo do login_page.dart), não duplica.
+  String _numeroCompleto(BuildContext context) {
+    final model = Provider.of<LoginModel>(context, listen: false);
+    final match = RegExp(r'\+\d+').firstMatch(model.area);
+    final codigoPais = match?.group(0) ?? '+55';
+    final codigoDigitos = codigoPais.replaceFirst('+', '');
+
+    var apenasDigitos = phoneC.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (!apenasDigitos.startsWith(codigoDigitos)) {
+      apenasDigitos = '$codigoDigitos$apenasDigitos';
+    }
+    return '+$apenasDigitos';
+  }
+
   void _aoSairDoCampoTelefone() {
     if (phoneF.hasFocus) return; // só age quando o campo PERDE o foco
     _dispararEnvioSmsSeNecessario();
@@ -52,8 +69,9 @@ class _RegisterPageState extends State<RegisterPage> {
   // da tela inicial), sem ter passado pelo login_page.dart antes — sem
   // isso, o Signal nunca fica sabendo que precisa mandar o SMS.
   Future<void> _dispararEnvioSmsSeNecessario() async {
-    final numero = phoneC.text.trim();
-    if (numero.isEmpty || numero == _numeroComSmsEnviado || _enviandoSms) return;
+    if (!strNoEmpty(phoneC.text)) return;
+    final numero = _numeroCompleto(context);
+    if (numero == _numeroComSmsEnviado || _enviandoSms) return;
 
     setState(() => _enviandoSms = true);
     try {
@@ -244,7 +262,7 @@ class _RegisterPageState extends State<RegisterPage> {
             return;
           }
           setState(() => _verificando = true);
-          await ImLoginManager.verify(phoneC.text, pWC.text, context);
+          await ImLoginManager.verify(_numeroCompleto(context), pWC.text, context);
           if (mounted) setState(() => _verificando = false);
         },
       ),
