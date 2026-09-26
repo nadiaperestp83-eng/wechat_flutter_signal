@@ -73,6 +73,7 @@ class _RegisterPageState extends State<RegisterPage> {
     final numero = _numeroCompleto(context);
     if (numero == _numeroComSmsEnviado || _enviandoSms) return;
 
+    showToast('Registrando número no Signal...');
     setState(() => _enviandoSms = true);
     try {
       final resultado = await ImLoginManager.requestCode(numero);
@@ -252,11 +253,20 @@ class _RegisterPageState extends State<RegisterPage> {
             ? Color.fromRGBO(226, 226, 226, 1.0)
             : Color.fromRGBO(8, 191, 98, 1.0),
         onTap: () async {
-          if (_verificando) return;
+          if (_verificando || _enviandoSms) return;
           if (!strNoEmpty(phoneC.text)) {
             showToast('Digite o número de telefone');
             return;
           }
+
+          // Garante que o registro/SMS foi disparado mesmo que o campo
+          // Phone nunca tenha perdido o foco de verdade (ex: usuário
+          // digitou e tocou direto em Verificar).
+          final numeroAtual = _numeroCompleto(context);
+          if (_numeroComSmsEnviado != numeroAtual) {
+            await _dispararEnvioSmsSeNecessario();
+          }
+
           if (!strNoEmpty(pWC.text)) {
             showToast('Digite o código recebido por SMS');
             return;
