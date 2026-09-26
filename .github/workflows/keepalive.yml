@@ -1,0 +1,23 @@
+name: Keep Supabase Awake
+
+# O projeto free do Supabase pausa depois de 7 dias sem nenhuma chamada de
+# API. Esse workflow só existe pra gerar uma chamada por dia — bem dentro
+# da janela de 7 dias — pra ele nunca pausar sozinho.
+on:
+  schedule:
+    - cron: '0 12 * * *' # todo dia às 12:00 UTC
+  workflow_dispatch: {} # também dá pra disparar manualmente na aba Actions
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pingar o Supabase (REST root)
+        run: |
+          codigo=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://qsmswvhfqaeebhxtfqwh.supabase.co/rest/v1/" \
+            -H "apikey: ${{ secrets.SIGNAL_SUPABASE_ANON_KEY }}")
+          echo "Resposta do Supabase: HTTP $codigo"
+          # Qualquer resposta (mesmo 401/404) já conta como atividade de
+          # API pro Supabase não considerar o projeto inativo — não
+          # precisamos de sucesso, só de tráfego real chegando.
