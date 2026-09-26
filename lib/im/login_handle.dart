@@ -6,6 +6,7 @@ import 'package:wechat_flutter/tools/wechat_flutter.dart';
 
 import '../pages/login/login_begin_page.dart';
 import '../pages/login/register_page.dart';
+import '../pages/login/signal_captcha_page.dart';
 import '../pages/root/root_page.dart';
 import 'local_store.dart';
 import 'signal_bridge_client.dart';
@@ -31,7 +32,22 @@ class ImLoginManager {
       return {'sucesso': true, 'jaRegistrado': true, 'phone': phone};
     }
 
-    final resultado = await SignalBridgeClient.register(phone);
+    var resultado = await SignalBridgeClient.register(phone);
+
+    // Signal costuma exigir essa verificação extra pra números novos —
+    // resolve automaticamente abrindo a WebView do captcha, igual o
+    // Signal/Molly fazem, em vez de só avisar e parar por aí.
+    if (resultado['sucesso'] == false && resultado['precisaCaptcha'] == true) {
+      showToast('O Signal pediu uma verificação extra — resolva a tela que vai abrir.');
+      final String? token = await Get.to<String?>(() => SignalCaptchaPage());
+
+      if (token == null || token.isEmpty) {
+        return {'sucesso': false, 'erro': 'Verificação não concluída', 'phone': phone};
+      }
+
+      resultado = await SignalBridgeClient.register(phone, captchaToken: token);
+    }
+
     return {...resultado, 'phone': phone};
   }
 
