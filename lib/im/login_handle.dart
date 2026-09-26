@@ -24,28 +24,38 @@ class ImLoginManager {
   /// passar pelo login_page.dart — ex: botão "Cadastre-se" da tela inicial).
   /// Garante que o número está registrado no signal-cli e que o SMS foi
   /// disparado, sem duplicar envio se já está registrado.
-  static Future<Map<String, dynamic>> requestCode(String phoneRaw) async {
+  static Future<Map<String, dynamic>> requestCode(String phoneRaw,
+      {void Function(String)? onLog}) async {
     final String phone = _normalizarTelefone(phoneRaw);
+    onLog?.call('Verificando status de $phone...');
 
     final statusAtual = await SignalBridgeClient.status(phone);
+    onLog?.call('status() -> $statusAtual');
+
     if (statusAtual['registrado'] == true) {
       return {'sucesso': true, 'jaRegistrado': true, 'phone': phone};
     }
 
+    onLog?.call('Chamando register($phone)...');
     var resultado = await SignalBridgeClient.register(phone);
+    onLog?.call('register() -> $resultado');
 
     // Signal costuma exigir essa verificação extra pra números novos —
     // resolve automaticamente abrindo a WebView do captcha, igual o
     // Signal/Molly fazem, em vez de só avisar e parar por aí.
     if (resultado['sucesso'] == false && resultado['precisaCaptcha'] == true) {
+      onLog?.call('Precisa de captcha — abrindo WebView...');
       showToast('O Signal pediu uma verificação extra — resolva a tela que vai abrir.');
       final String? token = await Get.to<String?>(() => SignalCaptchaPage());
+      onLog?.call('Token do captcha: ${token ?? "NENHUM (usuário fechou ou falhou)"}');
 
       if (token == null || token.isEmpty) {
         return {'sucesso': false, 'erro': 'Verificação não concluída', 'phone': phone};
       }
 
+      onLog?.call('Chamando register($phone, captchaToken)...');
       resultado = await SignalBridgeClient.register(phone, captchaToken: token);
+      onLog?.call('register() com captcha -> $resultado');
     }
 
     return {...resultado, 'phone': phone};
