@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
+import 'package:wechat_flutter/config/provider_config.dart';
 import 'package:wechat_flutter/provider/global_model.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 
@@ -102,7 +103,7 @@ class ImLoginManager {
 
       showToast('Enviamos um SMS pro $phone com o código de verificação.');
       onLog?.call('Indo pra tela de código...');
-      await Get.to(() => RegisterPage());
+      await Get.to(() => ProviderConfig.getInstance().getLoginPage(RegisterPage()));
     } catch (e, stack) {
       onLog?.call('EXCEÇÃO em login(): $e');
       onLog?.call('$stack');
