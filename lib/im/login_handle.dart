@@ -64,21 +64,25 @@ class ImLoginManager {
   /// Chamado pelo botão "próximo passo" da tela de login com o número
   /// digitado. Registra o número no Signal (via bridge) e manda o usuário
   /// pra tela de código (reaproveitando RegisterPage).
-  static Future<void> login(String phoneRaw, BuildContext context) async {
+  static Future<void> login(String phoneRaw, BuildContext context,
+      {void Function(String)? onLog}) async {
     final String phone = _normalizarTelefone(phoneRaw);
 
     try {
+      onLog?.call('Checando sessão local salva...');
       // Já verificado localmente neste aparelho -> pula direto pra dentro.
       final String? sessaoAtual = await SharedUtil.instance.getString(Keys.account);
       final bool sessaoValida =
           sessaoAtual == phone && await SharedUtil.instance.getBoolean(Keys.hasLogged);
 
       if (sessaoValida) {
+        onLog?.call('Sessão local válida — entrando direto.');
         await Get.offAll(() => RootPage());
         return;
       }
 
-      final resultadoRegistro = await requestCode(phone);
+      final resultadoRegistro = await requestCode(phone, onLog: onLog);
+      onLog?.call('requestCode() final: $resultadoRegistro');
       if (resultadoRegistro['sucesso'] == false) {
         if (resultadoRegistro['precisaCaptcha'] == true) {
           showToast(
@@ -97,8 +101,11 @@ class ImLoginManager {
       await SharedUtil.instance.saveBoolean(Keys.hasLogged, false);
 
       showToast('Enviamos um SMS pro $phone com o código de verificação.');
+      onLog?.call('Indo pra tela de código...');
       await Get.to(() => RegisterPage());
-    } catch (e) {
+    } catch (e, stack) {
+      onLog?.call('EXCEÇÃO em login(): $e');
+      onLog?.call('$stack');
       showToast('Falha ao falar com o servidor Signal: $e');
     }
   }
