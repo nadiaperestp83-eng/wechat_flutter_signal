@@ -30,7 +30,14 @@ class _SignalCaptchaPageState extends State<SignalCaptchaPage> {
           onNavigationRequest: (NavigationRequest request) {
             if (request.url.startsWith(_esquemaToken)) {
               final token = request.url.substring(_esquemaToken.length);
-              Navigator.of(context).pop(token.isNotEmpty ? token : null);
+              // Adiado pro próximo frame: fechar a WebView de dentro do
+              // próprio callback de navegação dela pode gerar uma corrida
+              // de descarte da view nativa no Android (crash silencioso).
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  Navigator.of(context).pop(token.isNotEmpty ? token : null);
+                }
+              });
               return NavigationDecision.prevent;
             }
             return NavigationDecision.navigate;
