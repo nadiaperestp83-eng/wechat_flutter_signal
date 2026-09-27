@@ -17,6 +17,18 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   TextEditingController _tC = new TextEditingController();
+  final List<String> _debugLog = [];
+  bool _processando = false;
+
+  void _log(String linha) {
+    final hora = DateTime.now().toIso8601String().substring(11, 19);
+    debugPrint('[SignalDebug $hora] $linha');
+    if (mounted) {
+      setState(() => _debugLog.add('$hora  $linha'));
+    } else {
+      _debugLog.add('$hora  $linha');
+    }
+  }
 
   @override
   void initState() {
@@ -137,7 +149,7 @@ class _LoginPageState extends State<LoginPage> {
         ),
         new SizedBox(height: mainSpace * 2.5),
         new ComMomButton(
-          text: S.of(context).nextStep,
+          text: _processando ? 'Processando...' : S.of(context).nextStep,
           style: TextStyle(
               color:
                   _tC.text == '' ? Colors.grey.withOpacity(0.8) : Colors.white),
@@ -145,15 +157,51 @@ class _LoginPageState extends State<LoginPage> {
           color: _tC.text == ''
               ? Color.fromRGBO(226, 226, 226, 1.0)
               : Color.fromRGBO(8, 191, 98, 1.0),
-          onTap: () {
+          onTap: () async {
+            if (_processando) return;
             if (_tC.text == '') {
-              showToast( '随便输入三位或以上');
+              showToast('随便输入三位或以上');
             } else if (_tC.text.length >= 3) {
-              ImLoginManager.login(_tC.text, context);
+              _log('=== Toque em Next step, número: "${_tC.text}" ===');
+              setState(() => _processando = true);
+              await ImLoginManager.login(_tC.text, context, onLog: _log);
+              if (mounted) setState(() => _processando = false);
             } else {
-              showToast( '请输入三位或以上');
+              showToast('请输入三位或以上');
             }
           },
+        ),
+        const SizedBox(height: 16.0),
+        // Painel de debug — mesma ideia da tela de código: mostra passo a
+        // passo o que está acontecendo, sem depender de log externo.
+        new Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10.0),
+          margin: const EdgeInsets.symmetric(horizontal: 10.0),
+          decoration: BoxDecoration(
+            color: Colors.black87,
+            borderRadius: BorderRadius.circular(8.0),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Debug (toque e segure pra selecionar/copiar):',
+                style: TextStyle(color: Colors.white54, fontSize: 11.0),
+              ),
+              const SizedBox(height: 6.0),
+              SelectableText(
+                _debugLog.isEmpty
+                    ? '(nada ainda — toque em Next step)'
+                    : _debugLog.join('\n'),
+                style: const TextStyle(
+                  color: Colors.greenAccent,
+                  fontSize: 11.0,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
