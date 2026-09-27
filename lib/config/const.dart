@@ -56,3 +56,10 @@ const String signalFunctionsBaseUrl =
     String.fromEnvironment('SIGNAL_FUNCTIONS_BASE_URL', defaultValue: '');
 const String signalSupabaseAnonKey =
     String.fromEnvironment('SIGNAL_SUPABASE_ANON_KEY', defaultValue: '');
+
+// URL "crua" do projeto Supabase (pra falar direto com as tabelas via
+// supabase_flutter, sem passar pelas Edge Functions), derivada da URL de
+// functions que você já configurou — sem precisar de secret nova.
+// Ex: https://xxxx.supabase.co/functions/v1  ->  https://xxxx.supabase.co
+final String signalSupabaseUrl =
+    signalFunctionsBaseUrl.replaceAll('/functions/v1', '');
