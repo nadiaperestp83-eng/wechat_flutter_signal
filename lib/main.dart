@@ -27,7 +27,21 @@ void main() async {
   /// 自定义报错页面
   ErrorWidget.builder = (FlutterErrorDetails flutterErrorDetails) {
     debugPrint(flutterErrorDetails.toString());
-    return new Center(child: new Text("App错误，快去反馈给作者!"));
+    return Container(
+      color: Colors.black,
+      padding: const EdgeInsets.all(16.0),
+      alignment: Alignment.topLeft,
+      child: SingleChildScrollView(
+        child: SelectableText(
+          'ERRO (toque e segure pra copiar):\n\n${flutterErrorDetails.exceptionAsString()}\n\n${flutterErrorDetails.stack}',
+          style: const TextStyle(
+            color: Colors.greenAccent,
+            fontSize: 11.0,
+            fontFamily: 'monospace',
+          ),
+        ),
+      ),
+    );
   };
 
   /// Android状态栏透明
