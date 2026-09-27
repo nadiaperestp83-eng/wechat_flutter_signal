@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:wechat_flutter/config/provider_config.dart';
 import 'package:wechat_flutter/provider/global_model.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
+import 'package:wechat_flutter/core/signal_core.dart';
 
 import '../pages/login/login_begin_page.dart';
 import '../pages/login/register_page.dart';
@@ -12,19 +13,9 @@ import '../pages/root/root_page.dart';
 import 'local_store.dart';
 import 'signal_bridge_client.dart';
 
-/// Mantém os mesmos nomes de método que a UI original já chama
-/// (login_page.dart chama ImLoginManager.login(...), mine chama
-/// ImLoginManager.loginOut(...)) — só o que acontece por dentro mudou.
 class ImLoginManager {
-  /// Não existe SDK pra inicializar aqui (é HTTP puro), mas mantemos o
-  /// método pra não quebrar quem já chama ImLoginManager.init em algum lugar.
   static Future<void> init(BuildContext context) async {}
 
-  /// Extraído pra ser reaproveitado tanto pelo login_page.dart (via login())
-  /// quanto pela RegisterPage direto (quando o usuário chega por ali sem
-  /// passar pelo login_page.dart — ex: botão "Cadastre-se" da tela inicial).
-  /// Garante que o número está registrado no signal-cli e que o SMS foi
-  /// disparado, sem duplicar envio se já está registrado.
   static Future<Map<String, dynamic>> requestCode(String phoneRaw,
       {void Function(String)? onLog}) async {
     final String phone = _normalizarTelefone(phoneRaw);
@@ -41,9 +32,6 @@ class ImLoginManager {
     var resultado = await SignalBridgeClient.register(phone);
     onLog?.call('register() -> $resultado');
 
-    // Signal costuma exigir essa verificação extra pra números novos —
-    // resolve automaticamente abrindo a WebView do captcha, igual o
-    // Signal/Molly fazem, em vez de só avisar e parar por aí.
     if (resultado['sucesso'] == false && resultado['precisaCaptcha'] == true) {
       onLog?.call('Precisa de captcha — abrindo WebView...');
       showToast('O Signal pediu uma verificação extra — resolva a tela que vai abrir.');
@@ -62,22 +50,19 @@ class ImLoginManager {
     return {...resultado, 'phone': phone};
   }
 
-  /// Chamado pelo botão "próximo passo" da tela de login com o número
-  /// digitado. Registra o número no Signal (via bridge) e manda o usuário
-  /// pra tela de código (reaproveitando RegisterPage).
   static Future<void> login(String phoneRaw, BuildContext context,
       {void Function(String)? onLog}) async {
     final String phone = _normalizarTelefone(phoneRaw);
 
     try {
       onLog?.call('Checando sessão local salva...');
-      // Já verificado localmente neste aparelho -> pula direto pra dentro.
       final String? sessaoAtual = await SharedUtil.instance.getString(Keys.account);
       final bool sessaoValida =
           sessaoAtual == phone && await SharedUtil.instance.getBoolean(Keys.hasLogged);
 
       if (sessaoValida) {
         onLog?.call('Sessão local válida — entrando direto.');
+        await SignalCore().inicializarCasulo(meuUserId: phone);
         await Get.offAll(() => RootPage());
         return;
       }
@@ -96,8 +81,18 @@ class ImLoginManager {
         return;
       }
 
-      // Guarda o número "pendente" (aguardando código) — RegisterPage lê
-      // isso pra saber pra quem enviar o verify().
+      // Já registrado antes (ex: reinstalou o app) — o Casulo publica
+      // um bundle novo (as chaves antigas ficaram só no aparelho anterior,
+      // não tem como recuperar) e entra direto, sem pedir SMS de novo.
+      if (resultadoRegistro['jaRegistrado'] == true) {
+        onLog?.call('Já registrado no Signal — inicializando Casulo e entrando direto...');
+        await SignalCore().inicializarCasulo(meuUserId: phone);
+        await SharedUtil.instance.saveString(Keys.account, phone);
+        await SharedUtil.instance.saveBoolean(Keys.hasLogged, true);
+        await Get.offAll(() => RootPage());
+        return;
+      }
+
       await SharedUtil.instance.saveString(Keys.account, phone);
       await SharedUtil.instance.saveBoolean(Keys.hasLogged, false);
 
@@ -111,8 +106,6 @@ class ImLoginManager {
     }
   }
 
-  /// Chamado pela RegisterPage (reaproveitada como tela de código) depois
-  /// que o usuário digita o SMS recebido.
   static Future<void> verify(String phone, String code, BuildContext context) async {
     final model = Provider.of<GlobalModel>(context, listen: false);
 
@@ -122,6 +115,8 @@ class ImLoginManager {
         showToast('Código inválido: ${resultado['erro'] ?? ''}');
         return;
       }
+
+      await SignalCore().inicializarCasulo(meuUserId: phone);
 
       model.account = phone;
       model.goToLogin = false;
@@ -148,6 +143,6 @@ class ImLoginManager {
   static String _normalizarTelefone(String texto) {
     final apenasDigitos = texto.replaceAll(RegExp(r'[^0-9+]'), '');
     if (apenasDigitos.startsWith('+')) return apenasDigitos;
-    return '+55$apenasDigitos'; // assume Brasil quando não vem "+"
+    return '+55$apenasDigitos';
   }
 }
