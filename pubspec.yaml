@@ -14,15 +14,9 @@ dependencies:
   flutter_localizations: #本地化
     sdk: flutter
   cupertino_icons: 1.0.8 #IOS风格材料图标
-#  tencent_cloud_chat_sdk: 8.8.7373 #腾讯云im #鸿蒙专属
   tencent_cloud_chat_sdk: 8.3.6498 #usado só pelas classes de dados (V2TimMessage etc), sem nuvem Tencent
   archive: 3.6.1 #腾讯云im生成token需要
   shared_preferences: 2.3.3 #持久化存储
-#  shared_preferences: #鸿蒙专属
-#    git:
-#      url: https://gitcode.com/openharmony-tpc/flutter_packages.git
-#      path: packages/shared_preferences/shared_preferences
-#      ref: br_shared_preferences-v2.5.3_ohos
   provider: 6.1.2 #状态管理
   get: 4.6.6 #状态管理
   cached_network_image: 3.4.1 #图片缓存，图片显示
@@ -31,13 +25,10 @@ dependencies:
   image_picker: 0.8.6 #选取图库
   extended_text: 14.2.0 #文本扩展显示
   extended_text_field: 16.0.1 #文字表情混入
-#  extended_text_field: #鸿蒙专属
-#   path: ohos_plugins/extended_text_field-16.0.1
   extended_text_library: 12.0.1 #extended 支持库
   url_launcher: 6.3.1 #打开系统浏览器
   connectivity_plus: 6.1.0 #网络连接
   connectivity_plus_ohos: #^0.0.3 #鸿蒙专属，单不影响正常版本
-#   path: /Users/q1/Documents/hos/connectivity_plus_ohos
     git:
       url: https://github.com/ahyangnb/connectivity_plus_ohos.git
       ref: main  # or specify a branch/tag/commit hash
@@ -61,14 +52,11 @@ dependencies:
   http: ^1.2.0 #chamadas HTTP pras Edge Functions do Supabase (bridge)
   hive: ^2.2.3 #armazenamento local de mensagens/conversas/contatos
   hive_flutter: ^1.1.0 #integração do Hive com o ciclo de vida do Flutter
+  libsignal_protocol_dart: ^0.6.2 #protocolo Signal (E2E) rodando no cliente
+  supabase_flutter: ^2.6.0 #transporte das mensagens/bundles criptografados
 
 dependency_overrides:
   js: 0.7.1
-#  path_provider: #鸿蒙专属
-#    git:
-#      url: https://gitcode.com/openharmony-tpc/flutter_packages.git
-#      path: packages/path_provider/path_provider
-#      ref: br_path_provider-v2.1.5_ohos
 
 dev_dependencies:
   flutter_test:
@@ -77,104 +65,3 @@ dev_dependencies:
 flutter:
 
   uses-material-design: true
-
-  assets:
-    - assets/images/bsc.webp
-    - assets/images/bar_close.png
-    - assets/images/tabbar_contacts_c.webp
-    - assets/images/tabbar_contacts_s.webp
-    - assets/images/tabbar_discover_c.webp
-    - assets/images/tabbar_discover_s.webp
-    - assets/images/tabbar_chat_c.webp
-    - assets/images/tabbar_chat_s.webp
-    - assets/images/tabbar_me_c.webp
-    - assets/images/tabbar_me_s.webp
-    - assets/images/def_avatar.png
-    - assets/images/search_black.webp
-    - assets/images/search_white.png
-    - assets/images/Contact_Female.webp
-    - assets/images/Contact_Male.webp
-    - assets/images/right_more.png
-    - assets/images/favorite.webp
-    - assets/images/contacts_add_newmessage.png
-    - assets/images/add_addressicon.png
-    - assets/images/ic_delete.webp
-    - assets/images/ic_right_arrow_black.webp
-    - assets/images/ic_right_arrow_grey.webp
-    - assets/images/ic_add_friend.webp
-    - assets/images/ic_no_data.webp
-
-    - assets/images/login/select_avatar.webp
-    - assets/images/login/ic_select_have.webp
-    - assets/images/login/ic_select_have_grey.webp
-    - assets/images/login/ic_select_no.png
-
-    - assets/images/chat/ic_Emotion.webp
-    - assets/images/chat/ic_Keyboard.webp
-    - assets/images/chat/ic_details_add.png
-    - assets/images/chat/ic_voice.webp
-    - assets/images/chat/ic_chat_more.webp
-    - assets/images/chat/ic_chat_voice.webp
-    - assets/images/chat/ic_details_camera.webp
-    - assets/images/chat/ic_details_card.webp
-    - assets/images/chat/ic_details_favorite.webp
-    - assets/images/chat/ic_details_file.webp
-    - assets/images/chat/ic_details_localtion.webp
-    - assets/images/chat/ic_details_media.webp
-    - assets/images/chat/ic_details_photo.webp
-    - assets/images/chat/ic_details_red.webp
-    - assets/images/chat/ic_details_transfer.webp
-    - assets/images/chat/ic_details_video.webp
-    - assets/images/chat/voice_volume_1.webp
-    - assets/images/chat/voice_volume_2.webp
-    - assets/images/chat/voice_volume_3.webp
-    - assets/images/chat/voice_volume_4.webp
-    - assets/images/chat/voice_volume_5.webp
-    - assets/images/chat/voice_volume_6.webp
-    - assets/images/chat/voice_volume_7.webp
-    - assets/images/chat/sound_left_0.webp
-    - assets/images/chat/sound_left_1.webp
-    - assets/images/chat/sound_left_2.webp
-    - assets/images/chat/sound_left_3.webp
-    - assets/images/chat/sound_right_0.png
-    - assets/images/chat/sound_right_1.webp
-    - assets/images/chat/sound_right_2.webp
-    - assets/images/chat/sound_right_3.png
-    - assets/images/chat/icon_sight_close.png
-    - assets/images/chat/flip_camera_icon_nor.webp
-
-    - assets/images/mine/ic_small_code.png
-    - assets/images/mine/ic_wallet.webp
-    - assets/images/mine/ic_card_package.png
-    - assets/images/mine/ic_emoji.png
-    - assets/images/mine/ic_pay.png
-    - assets/images/mine/ic_setting.png
-
-    - assets/images/contact/ic_contacts_details.png
-    - assets/images/contact/ic_no_public.webp
-    - assets/images/contact/ic_tag.webp
-    - assets/images/contact/ic_group.webp
-    - assets/images/contact/ic_new_friend.webp
-    - assets/images/contact/ic_video.png
-    - assets/images/contact/ic_voice.png
-    - assets/images/contact/ic_offical.webp
-    - assets/images/contact/ic_reda.webp
-    - assets/images/contact/ic_scanqr.webp
-    - assets/images/contact/ic_search_wework.webp
-    - assets/images/contact/ic_contact_add.webp
-
-    - assets/images/discover/ff_Icon_album.webp
-    - assets/images/discover/ff_Icon_shake.webp
-    - assets/images/discover/ff_Icon_bottle.webp
-    - assets/images/discover/ff_Icon_browse.webp
-    - assets/images/discover/ff_Icon_nearby.webp
-    - assets/images/discover/ff_Icon_qr_code.webp
-    - assets/images/discover/game_center_h5.webp
-    - assets/images/discover/mini_program.webp
-    - assets/images/emoji/
-    - assets/images/group/
-    - assets/images/wechat/
-    - assets/images/wechat/in/
-
-    - assets/data/contacts.json
-    - assets/data/friends.json
