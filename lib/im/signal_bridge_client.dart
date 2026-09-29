@@ -2,12 +2,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:wechat_flutter/config/const.dart';
 
-/// Única porta de saída pra rede relacionada ao Signal. Nenhum outro arquivo
-/// de lib/im/ deve chamar http diretamente — sempre passar por aqui.
-///
-/// Importante: isso NÃO guarda nada. Cada método faz uma chamada e devolve
-/// a resposta crua do bridge. Quem guarda histórico é o SignalLocalStore
-/// (Hive), no próprio aparelho.
 class SignalBridgeClient {
   SignalBridgeClient._();
 
@@ -24,26 +18,44 @@ class SignalBridgeClient {
     }
 
     final uri = Uri.parse('$signalFunctionsBaseUrl/$funcao');
-    final resposta = await http
-        .post(
-          uri,
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $signalSupabaseAnonKey',
-          },
-          body: jsonEncode(body),
-        )
-        .timeout(const Duration(seconds: 90)); // Render free pode demorar a acordar
 
-    final dynamic decodificado =
-        resposta.body.isNotEmpty ? jsonDecode(resposta.body) : <String, dynamic>{};
-    if (decodificado is! Map<String, dynamic>) {
-      throw SignalBridgeException('Resposta inesperada de $funcao', resposta.statusCode);
+    // O Render free tier derruba a conexão enquanto o servidor ainda está
+    // "acordando" de estar dormindo (spin-down por inatividade). Tenta de
+    // novo uma vez — a primeira chamada já disparou o wake-up.
+    for (var tentativa = 1; tentativa <= 2; tentativa++) {
+      try {
+        final resposta = await http
+            .post(
+              uri,
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $signalSupabaseAnonKey',
+              },
+              body: jsonEncode(body),
+            )
+            .timeout(const Duration(seconds: 90));
+
+        final dynamic decodificado =
+            resposta.body.isNotEmpty ? jsonDecode(resposta.body) : <String, dynamic>{};
+        if (decodificado is! Map<String, dynamic>) {
+          throw SignalBridgeException('Resposta inesperada de $funcao', resposta.statusCode);
+        }
+        return decodificado;
+      } catch (e) {
+        final mensagem = e.toString().toLowerCase();
+        final eQuedaDeConexao =
+            mensagem.contains('connection abort') || mensagem.contains('connection closed');
+
+        if (tentativa == 1 && eQuedaDeConexao) {
+          await Future.delayed(const Duration(seconds: 3));
+          continue;
+        }
+        rethrow;
+      }
     }
-    return decodificado;
-  }
 
-  // ---------- Auth ----------
+    throw SignalBridgeException('Falha ao chamar $funcao após retry', 0);
+  }
 
   static Future<Map<String, dynamic>> status(String phone) =>
       _post('signal-auth', {'action': 'status', 'phone': phone});
@@ -54,8 +66,6 @@ class SignalBridgeClient {
   static Future<Map<String, dynamic>> verify(String phone, String code) =>
       _post('signal-auth', {'action': 'verify', 'phone': phone, 'code': code});
 
-  // ---------- Mensagens ----------
-
   static Future<Map<String, dynamic>> sendText({
     required String fromPhone,
     required String to,
@@ -63,15 +73,11 @@ class SignalBridgeClient {
   }) =>
       _post('signal-send', {'phone': fromPhone, 'to': to, 'message': message});
 
-  /// Devolve a lista de envelopes já parseados (um por mensagem nova
-  /// recebida no bridge desde a última vez que alguém chamou /receive).
   static Future<List<Map<String, dynamic>>> receive(String phone) async {
     final resultado = await _post('signal-receive', {'phone': phone});
     final lista = resultado['envelopes'] as List<dynamic>? ?? [];
     return lista.cast<Map<String, dynamic>>();
   }
-
-  // ---------- Contatos ----------
 
   static Future<Map<String, dynamic>> getUserStatus({
     required String ownerPhone,
@@ -94,8 +100,6 @@ class SignalBridgeClient {
         'recipient': recipient,
         'name': name,
       });
-
-  // ---------- Perfil ----------
 
   static Future<Map<String, dynamic>> updateProfile({
     required String phone,
