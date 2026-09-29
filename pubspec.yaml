@@ -54,11 +54,9 @@ dependencies:
   hive_flutter: ^1.1.0 #integração do Hive com o ciclo de vida do Flutter
   libsignal_protocol_dart: ^0.6.2 #protocolo Signal (E2E) rodando no cliente
   supabase_flutter: ^2.6.0 #transporte das mensagens/bundles criptografados
-  app_links: ^6.3.3
 
 dependency_overrides:
   js: 0.7.1
-  app_links: "6.3.1"
 
 dev_dependencies:
   flutter_test:
@@ -67,3 +65,8 @@ dev_dependencies:
 flutter:
 
   uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/git/
+    - assets/data/
