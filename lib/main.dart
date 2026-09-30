@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:wechat_flutter/config/provider_config.dart';
 import 'package:wechat_flutter/app.dart';
 import 'package:wechat_flutter/tools/data/data.dart';
@@ -11,6 +12,9 @@ import 'config/storage_manager.dart';
 void main() async {
   /// 确保初始化
   WidgetsFlutterBinding.ensureInitialized();
+
+  /// Firebase (Firestore — transporte das mensagens criptografadas)
+  await Firebase.initializeApp();
 
   /// 数据初始化
   await Data.initData();
