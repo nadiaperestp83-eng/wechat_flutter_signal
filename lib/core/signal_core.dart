@@ -285,4 +285,21 @@ class SignalCore {
       print('Erro ao processar mensagem entrante: $e');
     }
   }
+
+  /// Sobe uma foto temporária pro Supabase Storage e devolve a URL pública.
+  /// Atenção: isso NÃO passa pela criptografia do Casulo (libsignal) — é
+  /// upload direto, protegido só pelo HTTPS/políticas do bucket. Se quiser
+  /// que fotos também sejam E2E como o texto, é um trabalho à parte
+  /// (dividir em chunks e cifrar cada um antes de subir).
+  Future<String> enviarFotoTemporaria(List<int> bytes, String nomeArquivo) async {
+    final caminho =
+        'fotos_temporarias/${DateTime.now().millisecondsSinceEpoch}_$nomeArquivo';
+
+    await _supabase.storage.from('fotos_temporarias').uploadBinary(
+          caminho,
+          Uint8List.fromList(bytes),
+        );
+
+    return _supabase.storage.from('fotos_temporarias').getPublicUrl(caminho);
+  }
 }
