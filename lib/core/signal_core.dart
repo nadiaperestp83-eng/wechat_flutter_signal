@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'package:wechat_flutter/config/const.dart';
@@ -24,7 +25,7 @@ class SignalCore {
 
   bool _inicializado = false;
   bool _supabaseInicializado = false;
-  RealtimeChannel? _canal;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _firestoreSub;
   String _meuUserId = '';
 
   late IdentityKeyPair _identityKeyPair;
@@ -46,10 +47,12 @@ class SignalCore {
   String get meuUserId => _meuUserId;
 
   SupabaseClient get _supabase => Supabase.instance.client;
+  CollectionReference<Map<String, dynamic>> get _mensagensFirestore =>
+      FirebaseFirestore.instance.collection('signal_chat_messages');
 
-  /// Chame DEPOIS que o número foi verificado com sucesso (verify() no
-  /// login_handle.dart) — gera as chaves do Casulo e publica o bundle
-  /// público no Supabase, pra outros conseguirem iniciar sessão comigo.
+  /// Chame DEPOIS que o número foi verificado com sucesso — gera as chaves
+  /// do Casulo, publica o bundle público no Supabase (auth/chaves) e
+  /// começa a escutar mensagens novas no Firestore (transporte).
   Future<void> inicializarCasulo({required String meuUserId}) async {
     if (_inicializado) return;
     _meuUserId = meuUserId;
@@ -58,7 +61,7 @@ class SignalCore {
       if (signalSupabaseUrl.isEmpty || signalSupabaseAnonKey.isEmpty) {
         throw StateError(
           'signalSupabaseUrl/signalSupabaseAnonKey vazios — confirme os '
-          'dart-defines SIGNAL_FUNCTIONS_BASE_URL e SIGNAL_SUPABASE_ANON_KEY.',
+          'dart-defines SIGNAL_SUPABASE_URL e SIGNAL_SUPABASE_ANON_KEY.',
         );
       }
       await Supabase.initialize(
@@ -82,13 +85,40 @@ class SignalCore {
 
     await _publicarMeuBundle(preKeys);
     _escutarMensagensEntrantes();
+    await verificarMensagensPendentes();
 
     _inicializado = true;
   }
 
   Future<void> encerrarCasulo() async {
-    await _canal?.unsubscribe();
+    await _firestoreSub?.cancel();
     _inicializado = false;
+  }
+
+  Future<void> reconectarSeNecessario() async {
+    if (!_inicializado || _meuUserId.isEmpty) return;
+    try {
+      await _firestoreSub?.cancel();
+      _escutarMensagensEntrantes();
+      await verificarMensagensPendentes();
+    } catch (e) {
+      print('Erro ao reconectar o Casulo: $e');
+    }
+  }
+
+  /// Busca direto no Firestore qualquer mensagem que já esteja esperando,
+  /// caso o listener não tenha notificado (ex: app estava fechado).
+  Future<void> verificarMensagensPendentes() async {
+    if (_meuUserId.isEmpty) return;
+    try {
+      final snapshot =
+          await _mensagensFirestore.where('recipientId', isEqualTo: _meuUserId).get();
+      for (final doc in snapshot.docs) {
+        await _processarMensagemEntrante(doc.id, doc.data());
+      }
+    } catch (e) {
+      print('Erro ao verificar mensagens pendentes: $e');
+    }
   }
 
   Future<void> _publicarMeuBundle(List<PreKeyRecord> preKeys) async {
@@ -114,20 +144,16 @@ class SignalCore {
   }
 
   void _escutarMensagensEntrantes() {
-    _canal = _supabase
-        .channel('mensagens:$_meuUserId')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'signal_messages',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'recipient_id',
-            value: _meuUserId,
-          ),
-          callback: (payload) => _processarMensagemEntrante(payload.newRecord),
-        )
-        .subscribe();
+    _firestoreSub = _mensagensFirestore
+        .where('recipientId', isEqualTo: _meuUserId)
+        .snapshots()
+        .listen((snapshot) {
+      for (final mudanca in snapshot.docChanges) {
+        if (mudanca.type == DocumentChangeType.added) {
+          _processarMensagemEntrante(mudanca.doc.id, mudanca.doc.data()!);
+        }
+      }
+    });
   }
 
   Future<void> _garantirSessao(String userId) async {
@@ -207,19 +233,20 @@ class SignalCore {
     final ciphertextMessage =
         await sessionCipher.encrypt(Uint8List.fromList(utf8.encode(textoPuro)));
 
-    await _supabase.from('signal_messages').insert({
-      'sender_id': _meuUserId,
-      'recipient_id': numeroDestino,
+    await _mensagensFirestore.add({
+      'senderId': _meuUserId,
+      'recipientId': numeroDestino,
       'payload': base64Encode(ciphertextMessage.serialize()),
-      'payload_type': ciphertextMessage.getType(),
+      'payloadType': ciphertextMessage.getType(),
+      'createdAt': FieldValue.serverTimestamp(),
     });
   }
 
-  Future<void> _processarMensagemEntrante(Map<String, dynamic> row) async {
+  Future<void> _processarMensagemEntrante(String docId, Map<String, dynamic> dados) async {
     try {
-      final String remetente = row['sender_id'] as String;
-      final Uint8List payloadBytes = base64Decode(row['payload'] as String);
-      final int payloadTipo = row['payload_type'] as int;
+      final String remetente = dados['senderId'] as String;
+      final Uint8List payloadBytes = base64Decode(dados['payload'] as String);
+      final int payloadTipo = dados['payloadType'] as int;
 
       final address = SignalProtocolAddress(remetente, 1);
       final sessionCipher = SessionCipher(
@@ -251,7 +278,9 @@ class SignalCore {
         ),
       );
 
-      await _supabase.from('signal_messages').delete().eq('id', row['id']);
+      // Apaga do Firestore assim que descriptografado — nenhuma mensagem
+      // fica salva na nuvem. Quem guarda o histórico é o Hive local.
+      await _mensagensFirestore.doc(docId).delete();
     } catch (e) {
       print('Erro ao processar mensagem entrante: $e');
     }
