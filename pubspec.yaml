@@ -54,6 +54,9 @@ dependencies:
   hive_flutter: ^1.1.0 #integração do Hive com o ciclo de vida do Flutter
   libsignal_protocol_dart: ^0.6.2 #protocolo Signal (E2E) rodando no cliente
   supabase_flutter: ^2.6.0 #transporte das mensagens/bundles criptografados
+  firebase_core: ^3.8.0 #inicialização do Firebase
+  cloud_firestore: ^5.5.0 #transporte das mensagens (texto criptografado)
+  firebase_storage: ^12.3.6 #fotos temporárias
 
 dependency_overrides:
   js: 0.7.1
