@@ -42,9 +42,10 @@ jobs:
 
       - name: Build APK (release)
         run: |
-          flutter build apk --release \
+          flutter build apk --release --no-shrink \
             --dart-define=SIGNAL_FUNCTIONS_BASE_URL=${{ secrets.SIGNAL_FUNCTIONS_BASE_URL }} \
             --dart-define=SIGNAL_SUPABASE_ANON_KEY=${{ secrets.SIGNAL_SUPABASE_ANON_KEY }} \
+            --dart-define=SIGNAL_SUPABASE_URL=${{ secrets.SIGNAL_SUPABASE_URL }} \
             --dart-define=SIGNAL_BRIDGE_URL=${{ secrets.SIGNAL_BRIDGE_URL }}
 
       - name: Publicar APK como artefato do workflow
@@ -53,4 +54,3 @@ jobs:
           name: app-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
-          
