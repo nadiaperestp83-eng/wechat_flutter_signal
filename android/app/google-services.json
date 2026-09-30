@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "498932582058",
+    "project_id": "wechat-fa48f",
+    "storage_bucket": "wechat-fa48f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:498932582058:android:7315a4b941d6d12875f2d3",
+        "android_client_info": {
+          "package_name": "com.example.wechat_flutter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBkXYVGdITIeMx6_f3xNaDaRRarxkRTxto"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
