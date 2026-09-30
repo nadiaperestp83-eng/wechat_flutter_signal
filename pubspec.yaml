@@ -56,8 +56,7 @@ dependencies:
   supabase_flutter: ^2.6.0 #transporte das mensagens/bundles criptografados
   firebase_core: ^3.8.0 #inicialização do Firebase
   cloud_firestore: ^5.5.0 #transporte das mensagens (texto criptografado)
-  firebase_storage: ^12.3.6 #fotos temporárias
-
+  
 dependency_overrides:
   js: 0.7.1
   app_links: "6.3.1"
