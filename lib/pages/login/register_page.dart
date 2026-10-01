@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
@@ -33,7 +34,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
   void _log(String linha) {
     final hora = DateTime.now().toIso8601String().substring(11, 19);
-    debugPrint('[SignalDebug $hora] $linha');
+    debugPrint('[Debug $hora] $linha');
     if (mounted) {
       setState(() => _debugLog.add('$hora  $linha'));
     } else {
@@ -54,10 +55,6 @@ class _RegisterPageState extends State<RegisterPage> {
     super.dispose();
   }
 
-  // Combina o código do país escolhido no seletor "Country" com os dígitos
-  // do campo "Phone" — o usuário não precisa mais digitar "+55" na mão.
-  // Se o texto já vier com o código incluso (ex: número pré-preenchido
-  // vindo do login_page.dart), não duplica.
   String _numeroCompleto(BuildContext context) {
     final model = Provider.of<LoginModel>(context, listen: false);
     final match = RegExp(r'\+\d+').firstMatch(model.area);
@@ -72,14 +69,11 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   void _aoSairDoCampoTelefone() {
-    if (phoneF.hasFocus) return; // só age quando o campo PERDE o foco
+    if (phoneF.hasFocus) return;
     _log('Campo Phone perdeu o foco (texto: "${phoneC.text}")');
     _dispararEnvioSmsSeNecessario();
   }
 
-  // Cobre o caso de quem chega nessa tela direto (ex: botão "Cadastre-se"
-  // da tela inicial), sem ter passado pelo login_page.dart antes — sem
-  // isso, o Signal nunca fica sabendo que precisa mandar o SMS.
   Future<void> _dispararEnvioSmsSeNecessario() async {
     if (!strNoEmpty(phoneC.text)) {
       _log('Campo Phone vazio — nada a fazer.');
@@ -95,45 +89,26 @@ class _RegisterPageState extends State<RegisterPage> {
       return;
     }
 
-    _log('=== Iniciando fluxo pra $numero ===');
-    showToast('Registrando número no Signal...');
+    _log('=== Enviando OTP via Supabase pra $numero ===');
+    showToast('Enviando código de verificação...');
     setState(() => _enviandoSms = true);
     try {
-      final resultado = await ImLoginManager.requestCode(numero, onLog: _log);
-      _log('Resultado final: $resultado');
-      if (resultado['sucesso'] == false) {
-        if (resultado['precisaCaptcha'] == true) {
-          showToast(
-            'O Signal pediu verificação extra pra esse número. '
-            'Abra ${resultado['captchaUrl']} e tente de novo.',
-          );
-        } else {
-          showToast('Falha ao enviar SMS: ${resultado['erro'] ?? 'erro desconhecido'}');
-        }
-        return;
-      }
+      await ImLoginManager.login(numero, context, onLog: _log);
       _numeroComSmsEnviado = numero;
-      showToast(
-        resultado['jaRegistrado'] == true
-            ? 'Esse número já está registrado — digite o código já recebido.'
-            : 'Enviamos um SMS com o código de verificação.',
-      );
     } catch (e, stack) {
       _log('EXCEÇÃO: $e');
       _log('$stack');
-      showToast('Falha ao falar com o servidor Signal: $e');
+      showToast('Falha ao enviar código: $e');
     } finally {
       if (mounted) setState(() => _enviandoSms = false);
     }
   }
 
-  // O número já foi salvo em login_handle.dart (ImLoginManager.login) antes
-  // de mandar o usuário pra cá — só pré-preenchemos o campo por conveniência.
   Future<void> _preencherNumeroPendente() async {
     final numeroPendente = await SharedUtil.instance.getString(Keys.account);
     if (numeroPendente != null && numeroPendente.isNotEmpty) {
       setState(() => phoneC.text = numeroPendente);
-      _numeroComSmsEnviado = numeroPendente; // já foi enviado por login_handle.dart
+      _numeroComSmsEnviado = numeroPendente;
     }
   }
 
@@ -222,7 +197,6 @@ class _RegisterPageState extends State<RegisterPage> {
         focusNode: phoneF,
         onTap: () => setState(() {}),
       ),
-      // Campo reaproveitado: era "senha", agora é o código do SMS.
       new EditView(
         label: 'Código SMS',
         hint: '000000',
@@ -285,9 +259,6 @@ class _RegisterPageState extends State<RegisterPage> {
             return;
           }
 
-          // Garante que o registro/SMS foi disparado mesmo que o campo
-          // Phone nunca tenha perdido o foco de verdade (ex: usuário
-          // digitou e tocou direto em Verificar).
           final numeroAtual = _numeroCompleto(context);
           if (_numeroComSmsEnviado != numeroAtual) {
             await _dispararEnvioSmsSeNecessario();
@@ -303,8 +274,6 @@ class _RegisterPageState extends State<RegisterPage> {
         },
       ),
       new SizedBox(height: 16.0),
-      // Painel de debug — mostra exatamente o que o app está fazendo,
-      // passo a passo, sem depender de log do Render/GitHub.
       new Container(
         width: double.infinity,
         padding: const EdgeInsets.all(10.0),
