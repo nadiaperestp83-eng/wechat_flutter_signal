@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wechat_flutter/config/provider_config.dart';
 import 'package:wechat_flutter/provider/global_model.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
@@ -8,90 +9,34 @@ import 'package:wechat_flutter/core/signal_core.dart';
 
 import '../pages/login/login_begin_page.dart';
 import '../pages/login/register_page.dart';
-import '../pages/login/signal_captcha_page.dart';
 import '../pages/root/root_page.dart';
 import 'local_store.dart';
-import 'signal_bridge_client.dart';
 
 class ImLoginManager {
   static Future<void> init(BuildContext context) async {}
 
-  static Future<Map<String, dynamic>> requestCode(String phoneRaw,
-      {void Function(String)? onLog}) async {
-    final String phone = _normalizarTelefone(phoneRaw);
-    onLog?.call('Verificando status de $phone...');
+  static SupabaseClient get _supabase => Supabase.instance.client;
 
-    final statusAtual = await SignalBridgeClient.status(phone);
-    onLog?.call('status() -> $statusAtual');
-
-    if (statusAtual['registrado'] == true) {
-      return {'sucesso': true, 'jaRegistrado': true, 'phone': phone};
-    }
-
-    onLog?.call('Chamando register($phone)...');
-    var resultado = await SignalBridgeClient.register(phone);
-    onLog?.call('register() -> $resultado');
-
-    if (resultado['sucesso'] == false && resultado['precisaCaptcha'] == true) {
-      onLog?.call('Precisa de captcha — abrindo WebView...');
-      showToast('O Signal pediu uma verificação extra — resolva a tela que vai abrir.');
-      final String? token = await Get.to<String?>(() => SignalCaptchaPage());
-      onLog?.call('Token do captcha: ${token ?? "NENHUM (usuário fechou ou falhou)"}');
-
-      if (token == null || token.isEmpty) {
-        return {'sucesso': false, 'erro': 'Verificação não concluída', 'phone': phone};
-      }
-
-      onLog?.call('Chamando register($phone, captchaToken)...');
-      resultado = await SignalBridgeClient.register(phone, captchaToken: token);
-      onLog?.call('register() com captcha -> $resultado');
-    }
-
-    return {...resultado, 'phone': phone};
-  }
-
+  /// Pede ao Supabase Auth pra mandar o SMS de verificação pro número.
+  /// Exige provedor de SMS configurado no painel (Authentication → Phone).
   static Future<void> login(String phoneRaw, BuildContext context,
       {void Function(String)? onLog}) async {
     final String phone = _normalizarTelefone(phoneRaw);
 
     try {
-      onLog?.call('Checando sessão local salva...');
-      final String? sessaoAtual = await SharedUtil.instance.getString(Keys.account);
-      final bool sessaoValida =
-          sessaoAtual == phone && await SharedUtil.instance.getBoolean(Keys.hasLogged);
+      onLog?.call('Checando sessão Supabase já ativa...');
+      final sessaoAtual = _supabase.auth.currentSession;
 
-      if (sessaoValida) {
-        onLog?.call('Sessão local válida — entrando direto.');
+      if (sessaoAtual != null && _supabase.auth.currentUser?.phone == phone.replaceFirst('+', '')) {
+        onLog?.call('Sessão Supabase válida — entrando direto.');
         await SignalCore().inicializarCasulo(meuUserId: phone);
         await Get.offAll(() => RootPage());
         return;
       }
 
-      final resultadoRegistro = await requestCode(phone, onLog: onLog);
-      onLog?.call('requestCode() final: $resultadoRegistro');
-      if (resultadoRegistro['sucesso'] == false) {
-        if (resultadoRegistro['precisaCaptcha'] == true) {
-          showToast(
-            'O Signal pediu verificação extra (captcha) pra esse número. '
-            'Abra ${resultadoRegistro['captchaUrl']} e tente de novo depois.',
-          );
-          return;
-        }
-        showToast('Falha ao registrar: ${resultadoRegistro['erro'] ?? 'erro desconhecido'}');
-        return;
-      }
-
-      // Já registrado antes (ex: reinstalou o app) — o Casulo publica
-      // um bundle novo (as chaves antigas ficaram só no aparelho anterior,
-      // não tem como recuperar) e entra direto, sem pedir SMS de novo.
-      if (resultadoRegistro['jaRegistrado'] == true) {
-        onLog?.call('Já registrado no Signal — inicializando Casulo e entrando direto...');
-        await SignalCore().inicializarCasulo(meuUserId: phone);
-        await SharedUtil.instance.saveString(Keys.account, phone);
-        await SharedUtil.instance.saveBoolean(Keys.hasLogged, true);
-        await Get.offAll(() => RootPage());
-        return;
-      }
+      onLog?.call('Enviando OTP via Supabase Auth pra $phone...');
+      await _supabase.auth.signInWithOtp(phone: phone);
+      onLog?.call('OTP enviado com sucesso.');
 
       await SharedUtil.instance.saveString(Keys.account, phone);
       await SharedUtil.instance.saveBoolean(Keys.hasLogged, false);
@@ -102,25 +47,33 @@ class ImLoginManager {
     } catch (e, stack) {
       onLog?.call('EXCEÇÃO em login(): $e');
       onLog?.call('$stack');
-      showToast('Falha ao falar com o servidor Signal: $e');
+      showToast('Falha ao enviar código: $e');
     }
   }
 
+  /// Confirma o código de 6 dígitos recebido por SMS junto ao Supabase Auth.
   static Future<void> verify(String phone, String code, BuildContext context) async {
     final model = Provider.of<GlobalModel>(context, listen: false);
 
     try {
-      final resultado = await SignalBridgeClient.verify(phone, code);
-      if (resultado['sucesso'] != true) {
-        showToast('Código inválido: ${resultado['erro'] ?? ''}');
+      final telefoneNormalizado = _normalizarTelefone(phone);
+
+      final resposta = await _supabase.auth.verifyOTP(
+        type: OtpType.sms,
+        phone: telefoneNormalizado,
+        token: code,
+      );
+
+      if (resposta.session == null) {
+        showToast('Código inválido ou expirado.');
         return;
       }
 
-      await SignalCore().inicializarCasulo(meuUserId: phone);
+      await SignalCore().inicializarCasulo(meuUserId: telefoneNormalizado);
 
-      model.account = phone;
+      model.account = telefoneNormalizado;
       model.goToLogin = false;
-      await SharedUtil.instance.saveString(Keys.account, phone);
+      await SharedUtil.instance.saveString(Keys.account, telefoneNormalizado);
       await SharedUtil.instance.saveBoolean(Keys.hasLogged, true);
       model.refresh();
 
@@ -133,6 +86,7 @@ class ImLoginManager {
 
   static Future<void> loginOut(BuildContext context) async {
     final model = Provider.of<GlobalModel>(context, listen: false);
+    await _supabase.auth.signOut();
     model.goToLogin = true;
     model.refresh();
     await SharedUtil.instance.saveBoolean(Keys.hasLogged, false);
