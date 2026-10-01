@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
-import 'package:wechat_flutter/config/const.dart';
 
 class MensagemDescriptografada {
   final String remetente;
@@ -24,7 +23,6 @@ class SignalCore {
   SignalCore._internal();
 
   bool _inicializado = false;
-  bool _supabaseInicializado = false;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _firestoreSub;
   String _meuUserId = '';
 
@@ -50,26 +48,12 @@ class SignalCore {
   CollectionReference<Map<String, dynamic>> get _mensagensFirestore =>
       FirebaseFirestore.instance.collection('signal_chat_messages');
 
-  /// Chame DEPOIS que o número foi verificado com sucesso — gera as chaves
-  /// do Casulo, publica o bundle público no Supabase (auth/chaves) e
-  /// começa a escutar mensagens novas no Firestore (transporte).
+  /// Chame DEPOIS que o OTP do Supabase Auth foi confirmado com sucesso.
+  /// Supabase já está inicializado desde o main.dart — aqui só gera as
+  /// chaves de criptografia e publica o bundle público.
   Future<void> inicializarCasulo({required String meuUserId}) async {
     if (_inicializado) return;
     _meuUserId = meuUserId;
-
-    if (!_supabaseInicializado) {
-      if (signalSupabaseUrl.isEmpty || signalSupabaseAnonKey.isEmpty) {
-        throw StateError(
-          'signalSupabaseUrl/signalSupabaseAnonKey vazios — confirme os '
-          'dart-defines SIGNAL_SUPABASE_URL e SIGNAL_SUPABASE_ANON_KEY.',
-        );
-      }
-      await Supabase.initialize(
-        url: signalSupabaseUrl,
-        anonKey: signalSupabaseAnonKey,
-      );
-      _supabaseInicializado = true;
-    }
 
     _identityKeyPair = generateIdentityKeyPair();
     _registrationId = generateRegistrationId(false);
@@ -106,8 +90,6 @@ class SignalCore {
     }
   }
 
-  /// Busca direto no Firestore qualquer mensagem que já esteja esperando,
-  /// caso o listener não tenha notificado (ex: app estava fechado).
   Future<void> verificarMensagensPendentes() async {
     if (_meuUserId.isEmpty) return;
     try {
@@ -278,19 +260,12 @@ class SignalCore {
         ),
       );
 
-      // Apaga do Firestore assim que descriptografado — nenhuma mensagem
-      // fica salva na nuvem. Quem guarda o histórico é o Hive local.
       await _mensagensFirestore.doc(docId).delete();
     } catch (e) {
       print('Erro ao processar mensagem entrante: $e');
     }
   }
 
-  /// Sobe uma foto temporária pro Supabase Storage e devolve a URL pública.
-  /// Atenção: isso NÃO passa pela criptografia do Casulo (libsignal) — é
-  /// upload direto, protegido só pelo HTTPS/políticas do bucket. Se quiser
-  /// que fotos também sejam E2E como o texto, é um trabalho à parte
-  /// (dividir em chunks e cifrar cada um antes de subir).
   Future<String> enviarFotoTemporaria(List<int> bytes, String nomeArquivo) async {
     final caminho =
         'fotos_temporarias/${DateTime.now().millisecondsSinceEpoch}_$nomeArquivo';
