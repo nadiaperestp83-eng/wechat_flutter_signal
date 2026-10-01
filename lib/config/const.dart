@@ -47,19 +47,13 @@ const helpUrl =
 const defContentImg =
     'https://www.runoob.com/wp-content/uploads/2015/06/image_1c58e950q14da167k1nqpu2hn5e9.png';
 
-// ===== Config do bridge Signal (adicionado) =====
-// Nada de chave hardcoded aqui — os valores reais vêm do GitHub Secrets,
-// injetados em tempo de build via --dart-define (ver o workflow .github/
-// workflows/build.yml). Em dev local, rode com:
-//   flutter run --dart-define=SIGNAL_FUNCTIONS_BASE_URL=https://SEU-PROJETO.supabase.co/functions/v1 --dart-define=SIGNAL_SUPABASE_ANON_KEY=sua_anon_key
+// ===== Config do bridge Signal (registro/SMS via signal-cli) =====
 const String signalFunctionsBaseUrl =
     String.fromEnvironment('SIGNAL_FUNCTIONS_BASE_URL', defaultValue: '');
 const String signalSupabaseAnonKey =
     String.fromEnvironment('SIGNAL_SUPABASE_ANON_KEY', defaultValue: '');
 
-// URL "crua" do projeto Supabase (pra falar direto com as tabelas via
-// supabase_flutter, sem passar pelas Edge Functions), derivada da URL de
-// functions que você já configurou — sem precisar de secret nova.
-// Ex: https://xxxx.supabase.co/functions/v1  ->  https://xxxx.supabase.co
-final String signalSupabaseUrl =
-    signalFunctionsBaseUrl.replaceAll('/functions/v1', '');
+// ===== URL real do projeto Supabase (auth/perfis/bundles/chaves) =====
+// Secret própria, SEM derivar da URL do Bridge — são servidores diferentes.
+const String signalSupabaseUrl =
+    String.fromEnvironment('SIGNAL_SUPABASE_URL', defaultValue: '');
