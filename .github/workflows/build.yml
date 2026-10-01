@@ -30,23 +30,11 @@ jobs:
       - name: Instalar dependências
         run: flutter pub get
 
-      - name: Criar secrets.json a partir dos GitHub Secrets
-        run: |
-          cat <<EOF > secrets.json
-          {
-            "SUPABASE_URL": "${{ secrets.SUPABASE_URL }}",
-            "SUPABASE_ANON_KEY": "${{ secrets.SUPABASE_ANON_KEY }}",
-            "SIGNAL_BRIDGE_URL": "${{ secrets.SIGNAL_BRIDGE_URL }}"
-          }
-          EOF
-
       - name: Build APK (release)
         run: |
           flutter build apk --release --no-shrink \
-            --dart-define=SIGNAL_FUNCTIONS_BASE_URL=${{ secrets.SIGNAL_FUNCTIONS_BASE_URL }} \
             --dart-define=SIGNAL_SUPABASE_ANON_KEY=${{ secrets.SIGNAL_SUPABASE_ANON_KEY }} \
-            --dart-define=SIGNAL_SUPABASE_URL=${{ secrets.SIGNAL_SUPABASE_URL }} \
-            --dart-define=SIGNAL_BRIDGE_URL=${{ secrets.SIGNAL_BRIDGE_URL }}
+            --dart-define=SIGNAL_SUPABASE_URL=${{ secrets.SIGNAL_SUPABASE_URL }}
 
       - name: Publicar APK como artefato do workflow
         uses: actions/upload-artifact@v4
