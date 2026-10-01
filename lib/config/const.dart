@@ -47,13 +47,8 @@ const helpUrl =
 const defContentImg =
     'https://www.runoob.com/wp-content/uploads/2015/06/image_1c58e950q14da167k1nqpu2hn5e9.png';
 
-// ===== Config do bridge Signal (registro/SMS via signal-cli) =====
-const String signalFunctionsBaseUrl =
-    String.fromEnvironment('SIGNAL_FUNCTIONS_BASE_URL', defaultValue: '');
-const String signalSupabaseAnonKey =
-    String.fromEnvironment('SIGNAL_SUPABASE_ANON_KEY', defaultValue: '');
-
-// ===== URL real do projeto Supabase (auth/perfis/bundles/chaves) =====
-// Secret própria, SEM derivar da URL do Bridge — são servidores diferentes.
+// ===== Supabase (auth, perfis, bundles/chaves) =====
 const String signalSupabaseUrl =
     String.fromEnvironment('SIGNAL_SUPABASE_URL', defaultValue: '');
+const String signalSupabaseAnonKey =
+    String.fromEnvironment('SIGNAL_SUPABASE_ANON_KEY', defaultValue: '');
