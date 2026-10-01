@@ -1,0 +1,41 @@
+name: Deploy Supabase SMS Function
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/send-sms/**'
+      - 'supabase/config.toml'
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Instalar Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Vincular ao projeto Supabase
+        run: supabase link --project-ref qsmswvhfqaeebhxtfqwh
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Configurar secrets da Edge Function
+        run: |
+          supabase secrets set \
+            SMSDEV_API_KEY=${{ secrets.SMSDEV_API_KEY }} \
+            SEND_SMS_HOOK_SECRET=${{ secrets.SEND_SMS_HOOK_SECRET }} \
+            --project-ref qsmswvhfqaeebhxtfqwh
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy da função send-sms
+        run: supabase functions deploy send-sms --project-ref qsmswvhfqaeebhxtfqwh
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
