@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
+import 'package:wechat_flutter/config/provider_config.dart';
 import 'package:wechat_flutter/im/login_handle.dart';
+import 'package:wechat_flutter/pages/login/register_page.dart';
 import 'package:wechat_flutter/pages/login/select_location_page.dart';
 import 'package:wechat_flutter/provider/login_model.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
@@ -19,6 +21,12 @@ class _LoginPageState extends State<LoginPage> {
   TextEditingController _tC = new TextEditingController();
   final List<String> _debugLog = [];
   bool _processando = false;
+
+  // Login por e-mail
+  final TextEditingController _emailC = new TextEditingController();
+  final TextEditingController _senhaC = new TextEditingController();
+  bool _processandoEmail = false;
+  bool _ocultarSenha = true;
 
   void _log(String linha) {
     final hora = DateTime.now().toIso8601String().substring(11, 19);
@@ -36,9 +44,128 @@ class _LoginPageState extends State<LoginPage> {
     initEdit();
   }
 
+  @override
+  void dispose() {
+    _tC.dispose();
+    _emailC.dispose();
+    _senhaC.dispose();
+    super.dispose();
+  }
+
   initEdit() async {
     final user = await SharedUtil.instance.getString(Keys.account);
-    _tC.text = user ?? '';
+    if (user == null) return;
+    // Conta por e-mail vai pro campo de e-mail; telefone fica no campo de telefone.
+    if (user.contains('@')) {
+      _emailC.text = user;
+    } else {
+      _tC.text = user;
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _entrarComEmail() async {
+    if (_processandoEmail || _processando) return;
+    setState(() => _processandoEmail = true);
+    _log('=== Toque em Entrar com e-mail: "${_emailC.text.trim()}" ===');
+    await ImLoginManager.loginWithEmail(_emailC.text, _senhaC.text, context,
+        onLog: _log);
+    if (mounted) setState(() => _processandoEmail = false);
+  }
+
+  Widget _campoEmail(String label, String hint, TextEditingController c,
+      {bool senha = false}) {
+    return new Container(
+      padding: EdgeInsets.only(bottom: 5.0),
+      margin: EdgeInsets.symmetric(horizontal: 10.0),
+      decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: Colors.grey, width: 0.15))),
+      child: new Row(
+        children: <Widget>[
+          new Container(
+            width: Get.width * 0.25,
+            alignment: Alignment.centerLeft,
+            margin: EdgeInsets.only(left: 15.0),
+            child: new Text(label,
+                style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.w400)),
+          ),
+          new Expanded(
+            child: new TextField(
+              controller: c,
+              maxLines: 1,
+              obscureText: senha && _ocultarSenha,
+              autocorrect: false,
+              enableSuggestions: false,
+              keyboardType:
+                  senha ? TextInputType.visiblePassword : TextInputType.emailAddress,
+              decoration: InputDecoration(
+                hintText: hint,
+                border: InputBorder.none,
+                suffixIcon: senha
+                    ? IconButton(
+                        icon: Icon(
+                            _ocultarSenha ? Icons.visibility_off : Icons.visibility,
+                            size: 20.0),
+                        onPressed: () =>
+                            setState(() => _ocultarSenha = !_ocultarSenha),
+                      )
+                    : null,
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _secaoEmail() {
+    final bool preenchido =
+        _emailC.text.trim().isNotEmpty && _senhaC.text.isNotEmpty;
+
+    return new Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        new Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20.0),
+          child: new Row(
+            children: <Widget>[
+              new Expanded(child: new Divider()),
+              new Padding(
+                padding: EdgeInsets.symmetric(horizontal: 10.0),
+                child: new Text('ou', style: TextStyle(color: tipColor)),
+              ),
+              new Expanded(child: new Divider()),
+            ],
+          ),
+        ),
+        new Padding(
+          padding: EdgeInsets.only(left: 20.0, top: 15.0, bottom: 5.0),
+          child: new Text('Entrar com e-mail', style: TextStyle(fontSize: 20.0)),
+        ),
+        _campoEmail('E-mail', 'seu@email.com', _emailC),
+        _campoEmail('Senha', 'Digite sua senha', _senhaC, senha: true),
+        new SizedBox(height: 20.0),
+        new ComMomButton(
+          text: _processandoEmail ? 'Entrando...' : 'Entrar com e-mail',
+          style: TextStyle(
+              color: preenchido ? Colors.white : Colors.grey.withOpacity(0.8)),
+          margin: EdgeInsets.symmetric(horizontal: 10.0),
+          color: preenchido
+              ? Color.fromRGBO(8, 191, 98, 1.0)
+              : Color.fromRGBO(226, 226, 226, 1.0),
+          onTap: _entrarComEmail,
+        ),
+        new Center(
+          child: new TextButton(
+            child: new Text('Não tem conta? Cadastrar com e-mail',
+                style: TextStyle(color: tipColor)),
+            onPressed: () => Get.to<void>(
+                ProviderConfig.getInstance().getLoginPage(new RegisterPage())),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget bottomItem(String item) {
@@ -171,6 +298,8 @@ class _LoginPageState extends State<LoginPage> {
             }
           },
         ),
+        const SizedBox(height: 24.0),
+        _secaoEmail(),
         const SizedBox(height: 16.0),
         // Painel de debug — mesma ideia da tela de código: mostra passo a
         // passo o que está acontecendo, sem depender de log externo.
