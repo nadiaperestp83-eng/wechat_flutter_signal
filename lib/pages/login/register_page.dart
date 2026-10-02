@@ -28,6 +28,12 @@ class _RegisterPageState extends State<RegisterPage> {
   String localAvatarImgPath = '';
   bool _verificando = false;
 
+  // Cadastro por e-mail (reaproveita o campo de apelido nickC)
+  final TextEditingController emailC = new TextEditingController();
+  final TextEditingController emailSenhaC = new TextEditingController();
+  bool _cadastrandoEmail = false;
+  bool _ocultarSenha = true;
+
   String? _numeroComSmsEnviado;
   bool _enviandoSms = false;
   final List<String> _debugLog = [];
@@ -52,6 +58,8 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   void dispose() {
     phoneF.removeListener(_aoSairDoCampoTelefone);
+    emailC.dispose();
+    emailSenhaC.dispose();
     super.dispose();
   }
 
@@ -106,10 +114,122 @@ class _RegisterPageState extends State<RegisterPage> {
 
   Future<void> _preencherNumeroPendente() async {
     final numeroPendente = await SharedUtil.instance.getString(Keys.account);
-    if (numeroPendente != null && numeroPendente.isNotEmpty) {
+    // Conta salva por e-mail não deve ser jogada no campo de telefone.
+    if (numeroPendente != null &&
+        numeroPendente.isNotEmpty &&
+        !numeroPendente.contains('@')) {
       setState(() => phoneC.text = numeroPendente);
       _numeroComSmsEnviado = numeroPendente;
     }
+  }
+
+  Future<void> _cadastrarComEmail() async {
+    if (_cadastrandoEmail || _verificando || _enviandoSms) return;
+    if (!strNoEmpty(nickC.text.trim())) {
+      showToast('Digite um apelido');
+      return;
+    }
+    setState(() => _cadastrandoEmail = true);
+    _log('=== Toque em Cadastrar com e-mail: "${emailC.text.trim()}" ===');
+    await ImLoginManager.registerWithEmail(
+        emailC.text, emailSenhaC.text, nickC.text, context,
+        onLog: _log);
+    if (mounted) setState(() => _cadastrandoEmail = false);
+  }
+
+  Widget _campoEmail(String label, String hint, TextEditingController c,
+      {bool senha = false}) {
+    return new Container(
+      padding: EdgeInsets.symmetric(horizontal: 5.0, vertical: 6.0),
+      margin: EdgeInsets.only(right: 10.0),
+      decoration: BoxDecoration(
+          border: Border(
+              bottom: BorderSide(
+                  color: lineColor.withOpacity(0.5), width: 0.7))),
+      child: new Row(
+        children: <Widget>[
+          new Container(
+            width: Get.width * 0.25,
+            alignment: Alignment.centerLeft,
+            child: new Text(label,
+                style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.w400)),
+          ),
+          new Expanded(
+            child: new TextField(
+              controller: c,
+              maxLines: 1,
+              obscureText: senha && _ocultarSenha,
+              autocorrect: false,
+              enableSuggestions: false,
+              keyboardType:
+                  senha ? TextInputType.visiblePassword : TextInputType.emailAddress,
+              decoration: InputDecoration(
+                hintText: hint,
+                border: InputBorder.none,
+                suffixIcon: senha
+                    ? IconButton(
+                        icon: Icon(
+                            _ocultarSenha ? Icons.visibility_off : Icons.visibility,
+                            size: 20.0),
+                        onPressed: () =>
+                            setState(() => _ocultarSenha = !_ocultarSenha),
+                      )
+                    : null,
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _secaoEmail() {
+    final bool preenchido = emailC.text.trim().isNotEmpty &&
+        emailSenhaC.text.isNotEmpty &&
+        nickC.text.trim().isNotEmpty;
+
+    return new Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        new Padding(
+          padding: EdgeInsets.symmetric(vertical: 10.0),
+          child: new Row(
+            children: <Widget>[
+              new Expanded(child: new Divider()),
+              new Padding(
+                padding: EdgeInsets.symmetric(horizontal: 10.0),
+                child: new Text('ou', style: TextStyle(color: tipColor)),
+              ),
+              new Expanded(child: new Divider()),
+            ],
+          ),
+        ),
+        new Padding(
+          padding: EdgeInsets.only(left: 5.0, bottom: 5.0),
+          child: new Text('Cadastrar com e-mail',
+              style: TextStyle(fontSize: 20.0)),
+        ),
+        new Padding(
+          padding: EdgeInsets.only(left: 5.0, bottom: 5.0),
+          child: new Text(
+              'Usa o apelido preenchido lá em cima. Não precisa de SMS.',
+              style: TextStyle(fontSize: 12.0, color: Colors.grey)),
+        ),
+        _campoEmail('E-mail', 'seu@email.com', emailC),
+        _campoEmail('Senha', 'Mínimo 6 caracteres', emailSenhaC, senha: true),
+        new ComMomButton(
+          text: _cadastrandoEmail ? 'Cadastrando...' : 'Cadastrar com e-mail',
+          style: TextStyle(
+              color: preenchido ? Colors.white : Colors.grey.withOpacity(0.8)),
+          margin: EdgeInsets.only(top: 20.0),
+          color: preenchido
+              ? Color.fromRGBO(8, 191, 98, 1.0)
+              : Color.fromRGBO(226, 226, 226, 1.0),
+          onTap: _cadastrarComEmail,
+        ),
+      ],
+    );
   }
 
   _openGallery() async {
@@ -142,6 +262,7 @@ class _RegisterPageState extends State<RegisterPage> {
               focusNode: nickF,
               controller: nickC,
               onTap: () => setState(() {}),
+              onChanged: (_) => setState(() {}),
             ),
           ),
           new InkWell(
@@ -273,6 +394,7 @@ class _RegisterPageState extends State<RegisterPage> {
           if (mounted) setState(() => _verificando = false);
         },
       ),
+      _secaoEmail(),
       new SizedBox(height: 16.0),
       new Container(
         width: double.infinity,
