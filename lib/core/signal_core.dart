@@ -117,7 +117,7 @@ class SignalCore {
       'signed_pre_key_public':
           base64Encode(_signedPreKey.getKeyPair().publicKey.serialize()),
       'signed_pre_key_signature': base64Encode(_signedPreKey.signature),
-    });
+    }, onConflict: 'user_id');
 
     final linhas = preKeys
         .map((pk) => {
