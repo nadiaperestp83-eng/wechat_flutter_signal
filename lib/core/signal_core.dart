@@ -4,6 +4,9 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
+import 'package:tencent_cloud_chat_sdk/enum/message_elem_type.dart';
+import 'package:wechat_flutter/im/local_store.dart';
+import 'package:wechat_flutter/tools/event/im_event.dart';
 
 class MensagemDescriptografada {
   final String remetente;
@@ -32,7 +35,8 @@ class SignalCore {
 
   final InMemorySessionStore _sessionStore = InMemorySessionStore();
   final InMemoryPreKeyStore _preKeyStore = InMemoryPreKeyStore();
-  final InMemorySignedPreKeyStore _signedPreKeyStore = InMemorySignedPreKeyStore();
+  final InMemorySignedPreKeyStore _signedPreKeyStore =
+      InMemorySignedPreKeyStore();
   late InMemoryIdentityKeyStore _identityKeyStore;
 
   final Set<String> _sessoesEstabelecidas = {};
@@ -40,7 +44,8 @@ class SignalCore {
   final StreamController<MensagemDescriptografada> _streamController =
       StreamController<MensagemDescriptografada>.broadcast();
 
-  Stream<MensagemDescriptografada> get mensagensRecebidas => _streamController.stream;
+  Stream<MensagemDescriptografada> get mensagensRecebidas =>
+      _streamController.stream;
   bool get estaInicializado => _inicializado;
   String get meuUserId => _meuUserId;
 
@@ -48,16 +53,14 @@ class SignalCore {
   CollectionReference<Map<String, dynamic>> get _mensagensFirestore =>
       FirebaseFirestore.instance.collection('signal_chat_messages');
 
-  /// Chame DEPOIS que o OTP do Supabase Auth foi confirmado com sucesso.
-  /// Supabase já está inicializado desde o main.dart — aqui só gera as
-  /// chaves de criptografia e publica o bundle público.
   Future<void> inicializarCasulo({required String meuUserId}) async {
     if (_inicializado) return;
     _meuUserId = meuUserId;
 
     _identityKeyPair = generateIdentityKeyPair();
     _registrationId = generateRegistrationId(false);
-    _identityKeyStore = InMemoryIdentityKeyStore(_identityKeyPair, _registrationId);
+    _identityKeyStore =
+        InMemoryIdentityKeyStore(_identityKeyPair, _registrationId);
 
     final preKeys = generatePreKeys(0, 100);
     _signedPreKey = generateSignedPreKey(_identityKeyPair, 0);
@@ -93,8 +96,9 @@ class SignalCore {
   Future<void> verificarMensagensPendentes() async {
     if (_meuUserId.isEmpty) return;
     try {
-      final snapshot =
-          await _mensagensFirestore.where('recipientId', isEqualTo: _meuUserId).get();
+      final snapshot = await _mensagensFirestore
+          .where('recipientId', isEqualTo: _meuUserId)
+          .get();
       for (final doc in snapshot.docs) {
         await _processarMensagemEntrante(doc.id, doc.data());
       }
@@ -107,7 +111,8 @@ class SignalCore {
     await _supabase.from('signal_bundles').upsert({
       'user_id': _meuUserId,
       'registration_id': _registrationId,
-      'identity_key': base64Encode(_identityKeyPair.getPublicKey().serialize()),
+      'identity_key':
+          base64Encode(_identityKeyPair.getPublicKey().serialize()),
       'signed_pre_key_id': _signedPreKey.id,
       'signed_pre_key_public':
           base64Encode(_signedPreKey.getKeyPair().publicKey.serialize()),
@@ -118,7 +123,8 @@ class SignalCore {
         .map((pk) => {
               'user_id': _meuUserId,
               'pre_key_id': pk.id,
-              'pre_key_public': base64Encode(pk.getKeyPair().publicKey.serialize()),
+              'pre_key_public':
+                  base64Encode(pk.getKeyPair().publicKey.serialize()),
             })
         .toList();
 
@@ -147,31 +153,35 @@ class SignalCore {
       return;
     }
 
-    final bundleRow =
-        await _supabase.from('signal_bundles').select().eq('user_id', userId).maybeSingle();
+    final bundleRow = await _supabase
+        .from('signal_bundles')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
 
     if (bundleRow == null) {
       throw StateError('Usuário $userId ainda não publicou um bundle de chaves.');
     }
 
-    final preKeyResult =
-        await _supabase.rpc('consume_one_time_prekey', params: {'target_user_id': userId});
+    final preKeyResult = await _supabase
+        .rpc('consume_one_time_prekey', params: {'target_user_id': userId});
 
     if (preKeyResult is! List || preKeyResult.isEmpty) {
       throw StateError(
-        'Usuário $userId está sem one-time prekeys disponíveis no momento.',
-      );
+          'Usuário $userId está sem one-time prekeys disponíveis no momento.');
     }
 
     final preKeyId = preKeyResult.first['pre_key_id'] as int;
     final preKeyPublicB64 = preKeyResult.first['pre_key_public'] as String;
-    final preKeyPublic = Curve.decodePoint(base64Decode(preKeyPublicB64), 0);
+    final preKeyPublic =
+        Curve.decodePoint(base64Decode(preKeyPublicB64), 0);
 
-    final identityKey =
-        IdentityKey(Curve.decodePoint(base64Decode(bundleRow['identity_key']), 0));
-    final signedPreKeyPublic =
-        Curve.decodePoint(base64Decode(bundleRow['signed_pre_key_public']), 0);
-    final signedPreKeySignature = base64Decode(bundleRow['signed_pre_key_signature']);
+    final identityKey = IdentityKey(
+        Curve.decodePoint(base64Decode(bundleRow['identity_key']), 0));
+    final signedPreKeyPublic = Curve.decodePoint(
+        base64Decode(bundleRow['signed_pre_key_public']), 0);
+    final signedPreKeySignature =
+        base64Decode(bundleRow['signed_pre_key_signature']);
 
     final bundle = PreKeyBundle(
       bundleRow['registration_id'] as int,
@@ -196,9 +206,11 @@ class SignalCore {
     _sessoesEstabelecidas.add(userId);
   }
 
-  Future<void> enviarMensagemSegura(String numeroDestino, String textoPuro) async {
+  Future<void> enviarMensagemSegura(
+      String numeroDestino, String textoPuro) async {
     if (!_inicializado) {
-      throw StateError('SignalCore não inicializado. Chame inicializarCasulo() primeiro.');
+      throw StateError(
+          'SignalCore não inicializado. Chame inicializarCasulo() primeiro.');
     }
 
     await _garantirSessao(numeroDestino);
@@ -212,8 +224,8 @@ class SignalCore {
       address,
     );
 
-    final ciphertextMessage =
-        await sessionCipher.encrypt(Uint8List.fromList(utf8.encode(textoPuro)));
+    final ciphertextMessage = await sessionCipher
+        .encrypt(Uint8List.fromList(utf8.encode(textoPuro)));
 
     await _mensagensFirestore.add({
       'senderId': _meuUserId,
@@ -224,10 +236,12 @@ class SignalCore {
     });
   }
 
-  Future<void> _processarMensagemEntrante(String docId, Map<String, dynamic> dados) async {
+  Future<void> _processarMensagemEntrante(
+      String docId, Map<String, dynamic> dados) async {
     try {
       final String remetente = dados['senderId'] as String;
-      final Uint8List payloadBytes = base64Decode(dados['payload'] as String);
+      final Uint8List payloadBytes =
+          base64Decode(dados['payload'] as String);
       final int payloadTipo = dados['payloadType'] as int;
 
       final address = SignalProtocolAddress(remetente, 1);
@@ -251,22 +265,58 @@ class SignalCore {
 
       _sessoesEstabelecidas.add(remetente);
       final textoPlano = utf8.decode(textoPlanoBytes);
+      final int agora = DateTime.now().millisecondsSinceEpoch;
+      final String msgID = 'in_${remetente}_$agora';
 
-      _streamController.add(
-        MensagemDescriptografada(
-          remetente: remetente,
-          texto: textoPlano,
-          timestamp: DateTime.now(),
-        ),
-      );
+      // Salva no Hive local — histórico fica só no aparelho, não na nuvem
+      await SignalLocalStore.appendMessage(remetente, {
+        'msgID': msgID,
+        'timestamp': agora,
+        'sender': remetente,
+        'userID': remetente,
+        'groupID': null,
+        'isSelf': false,
+        'elemType': MessageElemType.V2TIM_ELEM_TYPE_TEXT,
+        'text': textoPlano,
+        'status': 3,
+      });
 
+      await SignalLocalStore.upsertConversation({
+        'conversationID': remetente,
+        'type': 1,
+        'userID': remetente,
+        'showName': null,
+        'faceUrl': null,
+        'unreadCount': 1,
+        'orderkey': agora,
+        'lastMessage': {
+          'msgID': msgID,
+          'timestamp': agora,
+          'sender': remetente,
+          'isSelf': false,
+          'elemType': MessageElemType.V2TIM_ELEM_TYPE_TEXT,
+          'text': textoPlano,
+        },
+      });
+
+      _streamController.add(MensagemDescriptografada(
+        remetente: remetente,
+        texto: textoPlano,
+        timestamp: DateTime.now(),
+      ));
+
+      // Notifica a UI pra atualizar o chat em tempo real
+      eventBusNewMsg.value = EventBusNewMsg(remetente);
+
+      // Apaga do Firestore — mensagem não fica retida na nuvem
       await _mensagensFirestore.doc(docId).delete();
     } catch (e) {
       print('Erro ao processar mensagem entrante: $e');
     }
   }
 
-  Future<String> enviarFotoTemporaria(List<int> bytes, String nomeArquivo) async {
+  Future<String> enviarFotoTemporaria(
+      List<int> bytes, String nomeArquivo) async {
     final caminho =
         'fotos_temporarias/${DateTime.now().millisecondsSinceEpoch}_$nomeArquivo';
 
@@ -275,6 +325,8 @@ class SignalCore {
           Uint8List.fromList(bytes),
         );
 
-    return _supabase.storage.from('fotos_temporarias').getPublicUrl(caminho);
+    return _supabase.storage
+        .from('fotos_temporarias')
+        .getPublicUrl(caminho);
   }
 }
