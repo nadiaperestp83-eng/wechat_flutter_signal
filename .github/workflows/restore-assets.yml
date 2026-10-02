@@ -1,0 +1,41 @@
+name: Restaurar assets do wechat_flutter original
+
+# Rodar UMA vez, manualmente: aba Actions -> este workflow -> Run workflow.
+# Copia do repositório original (fluttercandies/wechat_flutter) apenas os
+# arquivos de assets que estão FALTANDO no seu fork. Nada existente é
+# sobrescrito.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do fork
+        uses: actions/checkout@v4
+
+      - name: Baixar o repositório original
+        run: git clone --depth 1 https://github.com/fluttercandies/wechat_flutter.git /tmp/upstream
+
+      - name: Copiar somente o que falta
+        run: |
+          mkdir -p assets
+          rsync -a --ignore-existing /tmp/upstream/assets/ assets/
+          echo "Arquivos restaurados:"
+          git status --porcelain assets | wc -l
+
+      - name: Commit e push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets
+          if git diff --cached --quiet; then
+            echo "Nada a restaurar."
+          else
+            git commit -m "fix: restaura imagens base dos assets (original fluttercandies)"
+            git push
+          fi
