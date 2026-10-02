@@ -42,7 +42,7 @@ Future<bool> setUsersProfileMethod(BuildContext context,
 
     await supabase.from('signal_accounts').upsert({
       'phone': meuNumero,
-      if (nickNameStr != null) 'name': nickNameStr,
+      if (nickNameStr != null) 'display_name': nickNameStr,
       if (avatarStr != null) 'avatar_url': avatarStr,
       'updated_at': DateTime.now().toIso8601String(),
     });
