@@ -59,4 +59,4 @@ Future<void> sendImageMsg(String userName, int type,
 Future<dynamic> sendSoundMessages(String id, String soundPath, int duration,
     int type, Callback callback) async {
   showToast('Envio de áudio ainda não suportado');
-}l
+}
