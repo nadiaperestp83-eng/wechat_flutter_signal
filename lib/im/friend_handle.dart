@@ -1,17 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:tencent_cloud_chat_sdk/models/v2_tim_friend_info.dart';
 import 'package:tencent_cloud_chat_sdk/models/v2_tim_user_full_info.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 
 import 'local_store.dart';
-import 'signal_bridge_client.dart';
 
-// Mesmo typedef do original — friend_item_dialog.dart importa isso
-// diretamente de cá.
 typedef OnSuCc = void Function(bool v);
 
-/// Mesma assinatura original: addFriend(userName, context, {suCc}).
-/// userName aqui é o número de telefone a adicionar.
 Future<dynamic> addFriend(String userName, BuildContext context,
     {OnSuCc? suCc}) async {
   final String? meuNumero = await SharedUtil.instance.getString(Keys.account);
@@ -21,18 +17,20 @@ Future<dynamic> addFriend(String userName, BuildContext context,
   }
 
   try {
-    final statusResultado = await SignalBridgeClient.getUserStatus(
-      ownerPhone: meuNumero,
-      recipient: userName,
-    );
-    final bool registrado = statusResultado['registrado'] == true;
+    final supabase = Supabase.instance.client;
 
-    if (!registrado) {
-      showToast('Esse número não está no Signal');
+    // Verifica se o número existe no Supabase (tabela signal_bundles)
+    final bundleRow = await supabase
+        .from('signal_bundles')
+        .select('user_id')
+        .eq('user_id', userName)
+        .maybeSingle();
+
+    if (bundleRow == null) {
+      showToast('Esse número não está cadastrado no app');
       return;
     }
 
-    await SignalBridgeClient.addContact(ownerPhone: meuNumero, recipient: userName);
     await SignalLocalStore.upsertContact({
       'phone': userName,
       'name': null,
@@ -51,7 +49,6 @@ Future<dynamic> addFriend(String userName, BuildContext context,
   }
 }
 
-/// Mesma assinatura original: delFriend(userName, context, {suCc}).
 Future<dynamic> delFriend(String userName, BuildContext context,
     {OnSuCc? suCc}) async {
   await SignalLocalStore.deleteContact(userName);
@@ -65,10 +62,6 @@ Future<dynamic> delFriend(String userName, BuildContext context,
   return true;
 }
 
-/// Mesma assinatura original: getContactsFriends(userName). O parâmetro
-/// existe pra manter compatibilidade com quem chama, mas como o cache
-/// local (Hive) é de uma conta só por aparelho, não precisamos filtrar
-/// por ele.
 Future<List<V2TimFriendInfo>> getContactsFriends(String userName) async {
   final salvos = SignalLocalStore.getContacts();
   return salvos
@@ -84,9 +77,7 @@ Future<List<V2TimFriendInfo>> getContactsFriends(String userName) async {
       .toList();
 }
 
-/// Mesma assinatura original: createGroupChat(personList, {name}).
-/// Grupos não são suportados pelo bridge signal-cli atual.
 Future<bool> createGroupChat(List<String> personList, {String? name}) async {
-  showToast('Criação de grupo ainda não suportada pelo bridge do Signal');
+  showToast('Criação de grupo ainda não suportada');
   return false;
 }
