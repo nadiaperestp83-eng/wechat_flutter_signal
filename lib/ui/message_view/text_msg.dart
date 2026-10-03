@@ -6,6 +6,45 @@ import 'package:wechat_flutter/ui/message_view/text_item_container.dart';
 
 import '../../provider/global_model.dart';
 
+/// Vistos da mensagem enviada: relógio, 1 cinza, 2 cinza, 2 azuis ou erro.
+class _Vistos extends StatelessWidget {
+  final int? status;
+
+  const _Vistos(this.status);
+
+  @override
+  Widget build(BuildContext context) {
+    IconData icone;
+    Color cor;
+    switch (status) {
+      case 7:
+        icone = Icons.done_all;
+        cor = const Color(0xff2196F3);
+        break;
+      case 6:
+        icone = Icons.done_all;
+        cor = Colors.grey;
+        break;
+      case 2:
+        icone = Icons.done;
+        cor = Colors.grey;
+        break;
+      case 3:
+      case 4:
+        icone = Icons.error_outline;
+        cor = Colors.red;
+        break;
+      default:
+        icone = Icons.access_time;
+        cor = Colors.grey;
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 8.0, right: 4.0),
+      child: Icon(icone, size: 16.0, color: cor),
+    );
+  }
+}
+
 class TextMsg extends StatelessWidget {
   const TextMsg(this.text, this.model, {super.key});
 
@@ -23,6 +62,7 @@ class TextMsg extends StatelessWidget {
         action: '',
         isMyself: self,
       ),
+      if (self) _Vistos(model.status),
       const Spacer(),
     ];
     if (self) {
