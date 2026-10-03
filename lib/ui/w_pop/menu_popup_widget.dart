@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:wechat_flutter/tools/tr_zh.dart';
 import 'package:wechat_flutter/config/const.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 import 'package:wechat_flutter/ui/w_pop/popup_menu_route_layout.dart';
@@ -163,7 +164,7 @@ class _MenuPopWidgetState extends State<MenuPopWidget> {
             ),
           ),
           child: Text(
-            item['title']!,
+            trZh(item['title']!),
             style: TextStyle(color: Colors.white),
           ),
         ),
