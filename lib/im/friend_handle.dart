@@ -9,7 +9,7 @@ import 'local_store.dart';
 typedef OnSuCc = void Function(bool v);
 
 Future<dynamic> addFriend(String userName, BuildContext context,
-    {OnSuCc? suCc}) async {
+    {OnSuCc? suCc, String? name}) async {
   final String? meuNumero = await SharedUtil.instance.getString(Keys.account);
   if (meuNumero == null) {
     showToast('Sessão inválida');
@@ -33,7 +33,7 @@ Future<dynamic> addFriend(String userName, BuildContext context,
 
     await SignalLocalStore.upsertContact({
       'phone': userName,
-      'name': null,
+      'name': name,
       'isRegistered': true,
     });
 
