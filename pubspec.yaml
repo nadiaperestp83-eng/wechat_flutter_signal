@@ -38,6 +38,7 @@ dependencies:
   package_info_plus: 8.1.1 #获取包信息
   flutter_sound: 9.17.5 #音频处理
   permission_handler: 11.3.1 #权限处理
+  geolocator: ^13.0.2 #localização (GPS) pra "Restaurantes por perto"
   audioplayers: 6.1.0 #音频处理
   video_player: 2.9.2 #视频播放
   lpinyin: 2.0.3 #拼音
