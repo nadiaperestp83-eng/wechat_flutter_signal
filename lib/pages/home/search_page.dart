@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wechat_flutter/im/friend_handle.dart';
 import 'package:wechat_flutter/im/local_store.dart';
+import 'package:wechat_flutter/pages/contacts/contacts_details_page.dart';
 import 'package:wechat_flutter/tools/event/im_event.dart';
 import 'package:wechat_flutter/tools/tr_zh.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
@@ -186,6 +187,16 @@ class _SearchPageState extends State<SearchPage> {
     eventBusNewMsg.value = EventBusNewMsg(u.email);
   }
 
+  /// Abre o perfil existente do app (com o botão "Enviar mensagem").
+  void _abrirPerfil(_UsuarioEmail u) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    Get.to<void>(ContactsDetailsPage(
+      id: u.email,
+      avatar: u.avatarUrl ?? '',
+      title: u.nomeExibicao,
+    ));
+  }
+
   Widget _avatar(_UsuarioEmail u) {
     final bool temFoto = u.avatarUrl != null && u.avatarUrl!.trim().isNotEmpty;
     return CircleAvatar(
@@ -238,6 +249,7 @@ class _SearchPageState extends State<SearchPage> {
           style: const TextStyle(color: mainTextColor, fontSize: 13.0),
         ),
         trailing: _acao(u),
+        onTap: () => _abrirPerfil(u),
       ),
     );
   }
