@@ -64,7 +64,7 @@ class _VoiceDialogState extends State<VoiceDialog> {
                   child: Image.asset(icon(), width: 100, height: 100),
                 ),
                 Text(
-                  '语音功能待完善',
+                  'Gravando...',
                   style: TextStyle(
                     fontStyle: FontStyle.normal,
                     color: Colors.white,
