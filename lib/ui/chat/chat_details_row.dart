@@ -27,6 +27,7 @@ class ChatDetailsRow extends StatefulWidget {
 
 class ChatDetailsRowState extends State<ChatDetailsRow> {
   String? path;
+  int _duracao = 1;
 
   @override
   void initState() {
@@ -41,7 +42,7 @@ class ChatDetailsRowState extends State<ChatDetailsRow> {
       sendSoundMessages(
         widget.id,
         path!,
-        2,
+        _duracao,
         widget.type,
         (value) => Notice.send(WeChatActions.msg(), v ?? ''),
       );
@@ -85,6 +86,7 @@ class ChatDetailsRowState extends State<ChatDetailsRow> {
                         voiceFile: (path) {
                           setState(() => this.path = path);
                         },
+                        onDuration: (segundos) => _duracao = segundos,
                       )
                     : new LayoutBuilder(builder: widget.edit),
               ),
