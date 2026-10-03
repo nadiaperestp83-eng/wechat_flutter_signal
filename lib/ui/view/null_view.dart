@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 import 'package:wechat_flutter/pages/root/user_page.dart';
 import 'package:flutter/material.dart';
 
+import 'package:wechat_flutter/tools/tr_zh.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 
 class HomeNullView extends StatelessWidget {
@@ -14,7 +15,7 @@ class HomeNullView extends StatelessWidget {
     return new Center(
       child: new InkWell(
         child: new Text(
-          str ?? '',
+          trZh(str),
           style: TextStyle(color: mainTextColor),
         ),
         onTap: () => Get.to<void>(new UserPage()),
