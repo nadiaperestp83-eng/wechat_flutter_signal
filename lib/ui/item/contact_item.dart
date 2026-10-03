@@ -5,6 +5,7 @@ import 'package:wechat_flutter/pages/contacts/group_list_page.dart';
 import 'package:wechat_flutter/pages/contacts/new_friend_page.dart';
 import 'package:wechat_flutter/pages/contacts/public_page.dart';
 import 'package:flutter/material.dart';
+import 'package:wechat_flutter/tools/tr_zh.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 
 import 'contact_view.dart';
@@ -106,7 +107,7 @@ class ContactItemState extends State<ContactItem> {
           ),
 
           /// 姓名
-          child: Text(widget.title,
+          child: Text(trZh(widget.title),
               style: TextStyle(fontWeight: FontWeight.w400), maxLines: 1),
         ),
       ),
