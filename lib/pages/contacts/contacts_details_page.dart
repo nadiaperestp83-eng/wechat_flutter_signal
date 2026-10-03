@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:tencent_cloud_chat_sdk/enum/conversation_type.dart';
 import 'package:wechat_flutter/pages/chat/chat_page.dart';
 import 'package:wechat_flutter/pages/chat/more_info_page.dart';
@@ -25,13 +26,47 @@ class ContactsDetailsPage extends StatefulWidget {
 }
 
 class _ContactsDetailsPageState extends State<ContactsDetailsPage> {
+  late String _titulo;
+  late String _avatar;
+
+  @override
+  void initState() {
+    super.initState();
+    _titulo = widget.title ?? '';
+    _avatar = widget.avatar ?? '';
+    _carregarPerfilSupabase();
+  }
+
+  /// Busca nome e foto atuais do usuário em signal_accounts (coluna "phone"
+  /// guarda o identificador: e-mail ou telefone). Se falhar, mantém o que veio.
+  Future<void> _carregarPerfilSupabase() async {
+    final String? id = widget.id;
+    if (id == null || id.isEmpty) return;
+    try {
+      final linha = await Supabase.instance.client
+          .from('signal_accounts')
+          .select('display_name, avatar_url')
+          .eq('phone', id)
+          .maybeSingle();
+      if (linha == null || !mounted) return;
+      final String? nome = linha['display_name'] as String?;
+      final String? foto = linha['avatar_url'] as String?;
+      setState(() {
+        if (nome != null && nome.trim().isNotEmpty) _titulo = nome.trim();
+        if (foto != null && foto.trim().isNotEmpty) _avatar = foto.trim();
+      });
+    } catch (_) {
+      // sem perfil ou sem permissão: segue com os dados recebidos
+    }
+  }
+
   List<Widget> body(bool isSelf) {
     return [
       new ContactCard(
-        img: widget.avatar!,
+        img: _avatar,
         id: widget.id!,
-        title: widget.title,
-        nickName: widget.title,
+        title: _titulo,
+        nickName: _titulo,
         area: '北京 海淀',
         isBorder: true,
       ),
@@ -61,7 +96,7 @@ class _ContactsDetailsPageState extends State<ContactsDetailsPage> {
           log('to chat page');
           Get.off(new ChatPage(
               id: widget.id!,
-              title: widget.title!,
+              title: _titulo,
               type: ConversationType.V2TIM_C2C));
         },
       ),
