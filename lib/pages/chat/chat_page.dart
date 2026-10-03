@@ -9,7 +9,7 @@ import 'package:wechat_flutter/pages/group/group_details_page.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 import 'package:wechat_flutter/ui/chat/chat_details_body.dart';
 import 'package:wechat_flutter/ui/chat/chat_details_row.dart';
-import 'package:wechat_flutter/ui/edit/emoji_text.dart';
+import 'package:wechat_flutter/ui/chat/emoji_panel.dart';
 import 'package:wechat_flutter/ui/edit/text_span_builder.dart';
 import 'package:wechat_flutter/ui/item/chat_more_icon.dart';
 import 'package:wechat_flutter/ui/view/indicator_page_view.dart';
@@ -263,25 +263,9 @@ class _ChatPageState extends State<ChatPage> {
 
   Widget emojiWidget() {
     return GestureDetector(
-      child: SizedBox(
+      child: EmojiPanel(
         height: _emojiState ? keyboardHeight : 0,
-        child: GridView.builder(
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 7, crossAxisSpacing: 10.0, mainAxisSpacing: 10.0),
-          scrollDirection: Axis.horizontal,
-          itemBuilder: (BuildContext context, int index) {
-            return GestureDetector(
-              child:
-                  Image.asset(EmojiUitl.instance.emojiMap['[${index + 1}]']!),
-              behavior: HitTestBehavior.translucent,
-              onTap: () {
-                insertText('[${index + 1}]');
-              },
-            );
-          },
-          itemCount: EmojiUitl.instance.emojiMap.length,
-          padding: const EdgeInsets.all(5.0),
-        ),
+        onEmojiSelected: insertText,
       ),
       onTap: () {},
     );
