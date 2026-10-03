@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wechat_flutter/config/const.dart';
 import 'package:wechat_flutter/config/provider_config.dart';
@@ -27,9 +26,6 @@ void main() async {
     url: signalSupabaseUrl,
     anonKey: signalSupabaseAnonKey,
   );
-
-  /// Firebase (Firestore — transporte das mensagens criptografadas)
-  await Firebase.initializeApp();
 
   /// 数据初始化
   await Data.initData();
