@@ -5,6 +5,7 @@ import 'package:tencent_cloud_chat_sdk/models/v2_tim_conversation.dart';
 import 'package:wechat_flutter/im/conversation_handle.dart';
 import 'package:wechat_flutter/im/model/chat_list.dart';
 import 'package:wechat_flutter/pages/chat/chat_page.dart';
+import 'package:wechat_flutter/tools/tr_zh.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 import 'package:wechat_flutter/ui/chat/my_conversation_view.dart';
 import 'package:wechat_flutter/ui/edit/text_span_builder.dart';
@@ -55,9 +56,9 @@ class _HomePageState extends State<HomePage>
         context: context,
         position: position,
         items: <MyPopupMenuItem<String>>[
-          const MyPopupMenuItem(value: '标为已读', child: Text('标为已读')),
-          const MyPopupMenuItem(value: '置顶聊天', child: Text('置顶聊天')),
-          const MyPopupMenuItem(value: '删除该聊天', child: Text('删除该聊天')),
+          MyPopupMenuItem(value: '标为已读', child: Text(trZh('标为已读'))),
+          MyPopupMenuItem(value: '置顶聊天', child: Text(trZh('置顶聊天'))),
+          MyPopupMenuItem(value: '删除该聊天', child: Text(trZh('删除该聊天'))),
           // ignore: missing_return
         ]).then<void>((String? selected) async {
       switch (selected) {
