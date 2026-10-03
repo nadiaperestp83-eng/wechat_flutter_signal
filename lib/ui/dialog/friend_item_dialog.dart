@@ -5,46 +5,38 @@ import 'package:wechat_flutter/tools/wechat_flutter.dart';
 
 import 'confirm_alert.dart';
 
+/// Menu "..." do perfil do contato. Só mostra ações que funcionam de verdade:
+/// excluir contato (remove da sua lista local) e cancelar.
 friendItemDialog(BuildContext context,
     {required String userId, required OnSuCc suCc}) {
-  action(v) {
+  void excluir() {
     Navigator.of(context).pop();
-    if (v == '删除') {
-      confirmAlert(
-        context,
-        (bool) {
-          if (bool) {
-            delFriend(userId, context, suCc: (v) => suCc(v));
-          }
-        },
-        tips: '你确定要删除此联系人吗',
-        okBtn: '删除',
-        warmStr: '删除联系人',
-        isWarm: true,
-        style: TextStyle(fontWeight: FontWeight.w500),
-      );
-    } else {
-      showToast('删除功能是好的');
-    }
+    confirmAlert(
+      context,
+      (bool confirmou) {
+        if (confirmou) {
+          delFriend(userId, context, suCc: (v) => suCc(v));
+        }
+      },
+      tips: 'Deseja mesmo excluir este contato?',
+      okBtn: 'Excluir',
+      cancelBtn: 'Cancelar',
+      warmStr: 'Excluir contato',
+      isWarm: true,
+      style: TextStyle(fontWeight: FontWeight.w500),
+    );
   }
 
-  Widget item(String item) {
+  Widget botao(String texto, VoidCallback onPressed, {Color? cor}) {
     return new Container(
       width: Get.width,
-      decoration: BoxDecoration(
-        border: item != '删除'
-            ? Border(
-                bottom: BorderSide(color: lineColor, width: 0.2),
-              )
-            : null,
-      ),
       child: new TextButton(
         style: ButtonStyle(
           padding: WidgetStatePropertyAll(EdgeInsets.symmetric(vertical: 15.0)),
           backgroundColor: WidgetStatePropertyAll(Colors.white),
         ),
-        onPressed: () => action(item),
-        child: new Text(item),
+        onPressed: onPressed,
+        child: new Text(texto, style: TextStyle(color: cor)),
       ),
     );
   }
@@ -53,17 +45,6 @@ friendItemDialog(BuildContext context,
     context: context,
     isScrollControlled: true,
     builder: (context) {
-      List<String> data = [
-        '设置备注和标签',
-        '把她推荐给朋友',
-        '设为星标好友',
-        '设置朋友圈和视频动态权限',
-        '加入黑名单',
-        '投诉',
-        '添加到桌面',
-        '删除',
-      ];
-
       return new Center(
         child: new Material(
           type: MaterialType.transparency,
@@ -83,21 +64,9 @@ friendItemDialog(BuildContext context,
                   color: Colors.white,
                   child: new Column(
                     children: <Widget>[
-                      new Column(children: data.map(item).toList()),
+                      botao('Excluir contato', excluir, cor: Colors.red),
                       new HorizontalLine(color: appBarColor, height: 10.0),
-                      new TextButton(
-                        style: ButtonStyle(
-                            padding: WidgetStatePropertyAll(
-                                EdgeInsets.symmetric(vertical: 15.0)),
-                            backgroundColor:
-                                WidgetStatePropertyAll(Colors.white)),
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: new Container(
-                          width: Get.width,
-                          alignment: Alignment.center,
-                          child: new Text('取消'),
-                        ),
-                      ),
+                      botao('Cancelar', () => Navigator.of(context).pop()),
                     ],
                   ),
                 ),
