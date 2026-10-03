@@ -60,6 +60,57 @@ class SignalLocalStore {
     await _messages.put(conversationId, jsonEncode(atual));
   }
 
+  static int _rankStatus(int? s) {
+    switch (s) {
+      case 7:
+        return 4; // lida
+      case 6:
+        return 3; // entregue
+      case 2:
+        return 2; // enviada
+      case 1:
+        return 1; // enviando
+      default:
+        return 0; // falha / desconhecido
+    }
+  }
+
+  /// Sobe o status das mensagens [ids] (recibos): nunca volta pra um status
+  /// "menor" (ex.: uma mensagem lida não volta a "entregue").
+  static Future<void> upgradeMessageStatus(
+    String conversationId,
+    List<String> ids,
+    int novoStatus,
+  ) async {
+    final atual = getMessages(conversationId);
+    bool mudou = false;
+    for (final m in atual) {
+      if (ids.contains(m['msgID']) &&
+          _rankStatus(novoStatus) > _rankStatus(m['status'] as int?)) {
+        m['status'] = novoStatus;
+        mudou = true;
+      }
+    }
+    if (mudou) await _messages.put(conversationId, jsonEncode(atual));
+  }
+
+  /// Marca se o recibo de leitura das mensagens recebidas [ids] já foi enviado.
+  static Future<void> markReadReceiptSent(
+    String conversationId,
+    List<String> ids,
+    bool enviado,
+  ) async {
+    final atual = getMessages(conversationId);
+    bool mudou = false;
+    for (final m in atual) {
+      if (ids.contains(m['msgID'])) {
+        m['readReceiptSent'] = enviado;
+        mudou = true;
+      }
+    }
+    if (mudou) await _messages.put(conversationId, jsonEncode(atual));
+  }
+
   static Future<void> deleteMessages(String conversationId) async {
     await _messages.delete(conversationId);
   }
