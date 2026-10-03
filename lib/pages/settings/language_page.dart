@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:wechat_flutter/provider/global_model.dart';
 import 'package:wechat_flutter/tools/shared_util.dart';
@@ -12,6 +13,7 @@ class LanguagePage extends StatefulWidget {
 
 class _LanguagePageState extends State<LanguagePage> {
   final List<LanguageData> languageDatas = [
+    LanguageData("Português (Brasil)", "pt", "BR", "WeChat"),
     LanguageData("中文", "zh", "CN", "微信-flutter"),
     LanguageData("English", "en", "US", "Wechat-flutter"),
   ];
@@ -39,6 +41,8 @@ class _LanguagePageState extends State<LanguagePage> {
                 Keys.currentLanguageCode, [languageCode, countryCode]);
             SharedUtil.instance.saveString(Keys.currentLanguage, language);
             SharedUtil.instance.saveString(Keys.appName, appName);
+            // Reconstrói o app inteiro pra todos os textos trocarem de idioma.
+            Get.forceAppUpdate();
           },
           title: new Text(languageDatas[index].language),
         );
