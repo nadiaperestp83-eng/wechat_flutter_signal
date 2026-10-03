@@ -8,7 +8,7 @@ class GlobalModel extends ChangeNotifier {
   BuildContext? context;
 
   ///app的名字
-  String appName = '微信flutter';
+  String appName = 'WeChat';
 
   /// 用户信息
   String account = '';
@@ -17,9 +17,9 @@ class GlobalModel extends ChangeNotifier {
   int gender = 0;
 
   ///当前语言
-  List<String> currentLanguageCode = ['zh', 'CN'];
-  String currentLanguage = '中文';
-  Locale? currentLocale;
+  List<String> currentLanguageCode = ['pt', 'BR'];
+  String currentLanguage = 'Português (Brasil)';
+  Locale? currentLocale = const Locale('pt', 'BR');
 
   ///是否进入登录页
   bool goToLogin = true;
