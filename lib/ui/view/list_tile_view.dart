@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:wechat_flutter/tools/tr_zh.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 
 class ListTileView extends StatelessWidget {
@@ -37,7 +38,7 @@ class ListTileView extends StatelessWidget {
     var text = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(title, style: titleStyle),
+        Text(trZh(title), style: titleStyle),
         if (label != null)
           Text(
             label!,
@@ -47,7 +48,7 @@ class ListTileView extends StatelessWidget {
     );
 
     var view = [
-      isLabel ? text : Text(title, style: titleStyle),
+      isLabel ? text : Text(trZh(title), style: titleStyle),
       Spacer(),
       Container(
         width: 7.0,
