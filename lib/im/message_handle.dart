@@ -22,7 +22,7 @@ Future<List<V2TimMessage>> getDimMessages(String id,
   return ordenadas.take(num).map(_mapaParaV2TimMessage).toList();
 }
 
-/// Busca mensagens novas no Firestore via SignalCore e salva no Hive.
+/// Busca mensagens novas na caixa de correio (Supabase) via SignalCore e salva no Hive.
 Future<void> _puxarNovasMensagens(String meuNumero, String conversationId) async {
   try {
     // SignalCore já escuta via stream em tempo real — aqui apenas garantimos
@@ -58,5 +58,5 @@ Future<void> sendImageMsg(String userName, int type,
 
 Future<dynamic> sendSoundMessages(String id, String soundPath, int duration,
     int type, Callback callback) async {
-  showToast('Envio de áudio ainda não suportado');
+  showToast('Áudio gravado! O envio será liberado na próxima etapa.');
 }
