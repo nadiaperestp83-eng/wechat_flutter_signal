@@ -253,6 +253,130 @@ class $zh_CN extends S {
   String get register => "注册";
 }
 
+class $pt_BR extends S {
+  const $pt_BR();
+
+  @override
+  TextDirection get textDirection => TextDirection.ltr;
+
+  @override
+  String get appName => "WeChat";
+
+  @override
+  String get australia => "Austrália";
+
+  @override
+  String get canada => "Canadá";
+
+  @override
+  String get chinaMainland => "China Continental";
+
+  @override
+  String get contacts => "Contatos";
+
+  @override
+  String get discover => "Descobrir";
+
+  @override
+  String get emergencyFreeze => "Congelamento de emergência";
+
+  @override
+  String get exampleName => "Por exemplo: Chen Chen";
+
+  @override
+  String get hongKong => "Hong Kong";
+
+  @override
+  String get label => "teste";
+
+  @override
+  String get language => "Idioma";
+
+  @override
+  String get languageTitle => "Alterar idioma";
+
+  @override
+  String get login => "Entrar";
+
+  @override
+  String get macao => "Macau";
+
+  @override
+  String get me => "Eu";
+
+  @override
+  String get mobileNumberLogin => "Entrar com número de celular";
+
+  @override
+  String get multiLanguage => "Idiomas";
+
+  @override
+  String get nextStep => "Próximo";
+
+  @override
+  String get nickName => "Apelido";
+
+  @override
+  String get notOpen => "Ainda não disponível";
+
+  @override
+  String get numberRegister => "Cadastro com número de celular";
+
+  @override
+  String get passWord => "Senha";
+
+  @override
+  String get phoneCity => "País/Região";
+
+  @override
+  String get phoneNumber => "Celular";
+
+  @override
+  String get phoneNumberHint => "Digite seu número de celular";
+
+  @override
+  String get protocolName => "[ Termos do WeChat ]";
+
+  @override
+  String get protocolTitle => "Contrato de Licença e Serviço do software WeChat";
+
+  @override
+  String get protocolUrl => "https://weixin.qq.com/cgi-bin/readtemplate?lang=en&t=weixin_agreement&s=default&cc=CN";
+
+  @override
+  String get pwTip => "Digite a senha";
+
+  @override
+  String get readAgree => "Li e concordo com ";
+
+  @override
+  String get register => "Cadastrar";
+
+  @override
+  String get retrievePW => "Recuperar senha";
+
+  @override
+  String get selectCountry => "Selecionar país ou região";
+
+  @override
+  String get singapore => "Singapura";
+
+  @override
+  String get taiwan => "Taiwan";
+
+  @override
+  String get uS => "Estados Unidos";
+
+  @override
+  String get userLoginTip => "Número do WeChat / QQ / e-mail";
+
+  @override
+  String get weChat => "WeChat";
+
+  @override
+  String get weChatSecurityCenter => "Central de Segurança";
+}
+
 class GeneratedLocalizationsDelegate extends LocalizationsDelegate<S> {
   const GeneratedLocalizationsDelegate();
 
@@ -260,6 +384,7 @@ class GeneratedLocalizationsDelegate extends LocalizationsDelegate<S> {
     return const <Locale>[
       Locale("en", ""),
       Locale("zh", "CN"),
+      Locale("pt", "BR"),
     ];
   }
 
@@ -291,6 +416,9 @@ class GeneratedLocalizationsDelegate extends LocalizationsDelegate<S> {
           return SynchronousFuture<S>(S.current!);
         case "zh_CN":
           S.current = const $zh_CN();
+          return SynchronousFuture<S>(S.current!);
+        case "pt_BR":
+          S.current = const $pt_BR();
           return SynchronousFuture<S>(S.current!);
         default:
         // NO-OP.
