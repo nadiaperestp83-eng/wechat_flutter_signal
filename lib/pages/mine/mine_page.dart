@@ -6,6 +6,7 @@ import 'package:wechat_flutter/pages/mine/personal_info_page.dart';
 import 'package:wechat_flutter/pages/settings/language_page.dart';
 import 'package:wechat_flutter/pages/wallet/pay_home_page.dart';
 import 'package:wechat_flutter/provider/global_model.dart';
+import 'package:wechat_flutter/tools/tr_zh.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 import 'package:wechat_flutter/ui/view/list_tile_view.dart';
 
@@ -18,6 +19,9 @@ class _MinePageState extends State<MinePage> {
   void action(name) {
     switch (name) {
       case '设置':
+        Get.to<void>(new LanguagePage());
+        break;
+      case '退出登录':
         ImLoginManager.loginOut(context);
         break;
       case '支付':
@@ -33,6 +37,7 @@ class _MinePageState extends State<MinePage> {
     return new ListTileView(
       border: item['label'] == '支付' ||
               item['label'] == '设置' ||
+              item['label'] == '退出登录' ||
               item['label'] == '表情'
           ? null
           : Border(bottom: BorderSide(color: lineColor, width: 0.2)),
@@ -43,7 +48,11 @@ class _MinePageState extends State<MinePage> {
       icon: item['icon']!,
       margin: EdgeInsets.symmetric(
           vertical:
-              item['label'] == '支付' || item['label'] == '设置' ? 10.0 : 0.0),
+              item['label'] == '支付' ||
+                  item['label'] == '设置' ||
+                  item['label'] == '退出登录'
+              ? 10.0
+              : 0.0),
       onPressed: () => action(item['label']),
       width: 25.0,
       fit: BoxFit.cover,
@@ -67,6 +76,7 @@ class _MinePageState extends State<MinePage> {
       {'label': '卡片', 'icon': 'assets/images/mine/ic_card_package.png'},
       {'label': '表情', 'icon': 'assets/images/mine/ic_emoji.png'},
       {'label': '设置', 'icon': 'assets/images/mine/ic_setting.png'},
+      {'label': '退出登录', 'icon': 'assets/images/mine/ic_setting.png'},
     ];
 
     var row = [
@@ -95,7 +105,7 @@ class _MinePageState extends State<MinePage> {
                   fontWeight: FontWeight.w500),
             ),
             new Text(
-              '微信号：' + model.account,
+              trZh('微信号：') + model.account,
               style: TextStyle(color: mainTextColor),
             ),
           ],
