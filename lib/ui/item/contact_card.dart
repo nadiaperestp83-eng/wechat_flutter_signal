@@ -53,7 +53,7 @@ class ContactCard extends StatelessWidget {
                   ),
                 );
               } else {
-                showToast( '无头像');
+                showToast('Sem foto de perfil');
               }
             },
           ),
@@ -64,24 +64,23 @@ class ContactCard extends StatelessWidget {
               Row(
                 children: <Widget>[
                   Text(
-                    title ?? '未知',
+                    title ?? 'Desconhecido',
                     style: TextStyle(
                       color: Colors.black,
                       fontSize: 18.0,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  SizedBox(width: mainSpace / 3),
-                  Image.asset('assets/images/Contact_Female.webp',
-                      width: 20.0, fit: BoxFit.fill),
                 ],
               ),
               Padding(
                 padding: EdgeInsets.only(top: 3.0),
-                child: Text("昵称：" + (nickName ?? ''), style: labelStyle),
+                child: Text('Apelido: ' + (nickName ?? ''), style: labelStyle),
               ),
-              Text("微信号：" + id, style: labelStyle),
-              Text("地区：" + (area ?? ''), style: labelStyle),
+              Text((id.contains('@') ? 'E-mail: ' : 'Celular: ') + id,
+                  style: labelStyle),
+              if (area != null && area!.trim().isNotEmpty)
+                Text('Região: ' + area!, style: labelStyle),
             ],
           )
         ],
