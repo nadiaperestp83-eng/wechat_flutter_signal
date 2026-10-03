@@ -5,6 +5,7 @@ import '../../tools/wechat_flutter.dart';
 import '../../ui/view/indicator_page_view.dart';
 import '../../ui/view/list_tile_view.dart';
 import '../settings/language_page.dart';
+import 'nearby_places_page.dart';
 import '../wechat_friends/page/wechat_friends_circle.dart';
 
 class DiscoverPage extends StatefulWidget {
@@ -42,6 +43,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
       onPressed: () {
         if (item['name'] == '朋友圈') {
           Get.to<void>(WeChatFriendsCircle());
+        } else if (item['name'] == '附近的餐厅') {
+          Get.to<void>(const NearbyPlacesPage());
         } else {
           Get.to<void>(LanguagePage());
         }
