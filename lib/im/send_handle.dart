@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:tencent_cloud_chat_sdk/enum/conversation_type.dart';
 import 'package:tencent_cloud_chat_sdk/enum/message_elem_type.dart';
@@ -25,7 +27,8 @@ Future<void> sendTextMsg(String targetId, int type, String context,
   }
 
   final int agora = DateTime.now().millisecondsSinceEpoch;
-  final String msgID = 'local_$agora';
+  // ID único: viaja criptografado dentro da mensagem e é a chave dos recibos.
+  final String msgID = 'm_${agora}_${Random().nextInt(1 << 30)}';
 
   final V2TimMessage mensagem = V2TimMessage(
     msgID: msgID,
@@ -44,9 +47,10 @@ Future<void> sendTextMsg(String targetId, int type, String context,
   eventBusNewMsg.value = EventBusNewMsg(targetId);
 
   try {
-    // Envia via Firestore (transporte criptografado do SignalCore)
-    await SignalCore().enviarMensagemSegura(targetId, context);
+    // Envia pela caixa de correio do Supabase (criptografado pelo SignalCore)
+    await SignalCore().enviarMensagemSegura(targetId, context, msgId: msgID);
 
+    // 2 = servidor recebeu (1 visto cinza). Os recibos sobem pra 6/7.
     await SignalLocalStore.updateMessageStatus(targetId, msgID, 2);
     eventBusNewMsg.value = EventBusNewMsg(targetId);
   } catch (e) {
