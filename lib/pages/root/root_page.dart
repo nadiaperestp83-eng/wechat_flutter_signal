@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:tencent_cloud_chat_sdk/manager/v2_tim_manager.dart';
+import 'package:wechat_flutter/core/push_service.dart';
 import 'package:tencent_cloud_chat_sdk/models/v2_tim_value_callback.dart';
 import 'package:wechat_flutter/http/api.dart';
 import 'package:wechat_flutter/pages/contacts/contacts_page.dart';
@@ -25,6 +26,8 @@ class _RootPageState extends State<RootPage> {
     super.initState();
     ifBrokenNetwork();
     updateApi(context);
+    // Liga o chat (chaves + Realtime) e o push, inclusive ao reabrir o app.
+    PushService.instance.iniciar();
   }
 
   Future<void> ifBrokenNetwork() async {
