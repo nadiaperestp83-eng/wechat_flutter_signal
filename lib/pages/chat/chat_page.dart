@@ -180,6 +180,46 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  /// Aviso temporário enquanto as chamadas não estão implementadas.
+  void _avisoEmBreve(String recurso) {
+    final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.hideCurrentSnackBar();
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text('$recurso: em breve'),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  /// Ícone de ação da barra superior (PNG dos assets, tingido de preto).
+  Widget _acaoBarra({
+    required String asset,
+    required VoidCallback onTap,
+    required String dica,
+    double tamanho = 24.0,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(20.0),
+      onTap: onTap,
+      child: Tooltip(
+        message: dica,
+        child: Container(
+          width: 40.0,
+          alignment: Alignment.center,
+          child: Image.asset(
+            asset,
+            width: tamanho,
+            height: tamanho,
+            color: Colors.black87,
+            fit: BoxFit.contain,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final MediaQueryData mq = MediaQuery.of(context);
@@ -252,16 +292,30 @@ class _ChatPageState extends State<ChatPage> {
       ),
     ];
 
-    final List<InkWell> rWidget = <InkWell>[
-      InkWell(
-        child: Image.asset('assets/images/right_more.png'),
+    // Igual ao WhatsApp: vídeo, chamada de voz e menu (⋮).
+    final List<Widget> rWidget = <Widget>[
+      _acaoBarra(
+        asset: 'assets/images/contact/ic_video.png',
+        dica: 'Chamada de vídeo',
+        onTap: () => _avisoEmBreve('Chamada de vídeo'),
+      ),
+      _acaoBarra(
+        asset: 'assets/images/contact/ic_voice.png',
+        dica: 'Chamada de voz',
+        onTap: () => _avisoEmBreve('Chamada de voz'),
+      ),
+      _acaoBarra(
+        asset: 'assets/images/right_more.png',
+        dica: 'Mais',
+        tamanho: 22.0,
         onTap: () => Get.to<void>(widget.type == 2
             ? GroupDetailsPage(
                 widget?.id ?? widget.title,
                 callBack: (v) {},
               )
             : ChatInfoPage(widget.id)),
-      )
+      ),
+      const SizedBox(width: 4.0),
     ];
 
     return Scaffold(
