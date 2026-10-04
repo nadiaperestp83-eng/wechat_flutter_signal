@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:hive/hive.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'package:tencent_cloud_chat_sdk/enum/message_elem_type.dart';
@@ -35,6 +36,10 @@ class SignalCore {
   factory SignalCore() => _instance;
   SignalCore._internal();
 
+  static const String _nomeCofre = 'signal_keys';
+  static const int _minimoPreKeys = 30;
+  static const int _lotePreKeys = 70;
+
   bool _inicializado = false;
   RealtimeChannel? _canal;
   String _meuUserId = '';
@@ -47,6 +52,14 @@ class SignalCore {
   late InMemoryPreKeyStore _preKeyStore;
   late InMemorySignedPreKeyStore _signedPreKeyStore;
   late InMemoryIdentityKeyStore _identityKeyStore;
+
+  // Persistência das chaves no aparelho (sem isso, ao fechar o app as chaves
+  // se perdiam e mensagens recebidas com o app fechado não abriam).
+  Box<String>? _cofre;
+  final Set<String> _remotos = <String>{};
+  final Set<int> _preKeyIds = <int>{};
+  final Set<int> _preKeysEnviadas = <int>{};
+  int _proximoPreKeyId = 1;
 
   final Set<String> _sessoesEstabelecidas = {};
 
@@ -77,35 +90,181 @@ class SignalCore {
     return completer.future;
   }
 
-  Future<void> inicializarCasulo({required String meuUserId}) async {
-    if (_inicializado) return;
-    _meuUserId = meuUserId;
+  // ------------------------------------------------------------ inicialização
 
-    // Estado novo a cada inicialização (também ao trocar de conta).
+  String _k(String nome) => '$_meuUserId:$nome';
+
+  void _criarStoresVazios() {
     _sessionStore = InMemorySessionStore();
     _preKeyStore = InMemoryPreKeyStore();
     _signedPreKeyStore = InMemorySignedPreKeyStore();
+    _remotos.clear();
+    _preKeyIds.clear();
+    _preKeysEnviadas.clear();
+    _proximoPreKeyId = 1;
+  }
+
+  Future<void> inicializarCasulo({required String meuUserId}) async {
+    if (_inicializado) return;
+    _meuUserId = meuUserId;
     _sessoesEstabelecidas.clear();
     _linhasVistas.clear();
+    _fila = Future<void>.value();
 
+    _cofre = await Hive.openBox<String>(_nomeCofre);
+
+    // Reaproveita as chaves guardadas neste aparelho; só gera novas na
+    // primeira vez (ou se o cofre estiver corrompido).
+    _criarStoresVazios();
+    final bool restaurado = await _restaurarEstado();
+    if (!restaurado) {
+      _criarStoresVazios();
+      await _gerarChavesNovas();
+    }
+
+    await _publicarMeuBundle(primeiraVez: !restaurado);
+    _escutarMensagensEntrantes();
+    await verificarMensagensPendentes();
+
+    _inicializado = true;
+  }
+
+  Future<void> _gerarChavesNovas() async {
     _identityKeyPair = generateIdentityKeyPair();
     _registrationId = generateRegistrationId(false);
     _identityKeyStore =
         InMemoryIdentityKeyStore(_identityKeyPair, _registrationId);
 
-    final preKeys = generatePreKeys(0, 100);
     _signedPreKey = generateSignedPreKey(_identityKeyPair, 0);
-
-    for (final p in preKeys) {
-      await _preKeyStore.storePreKey(p.id, p);
-    }
     await _signedPreKeyStore.storeSignedPreKey(_signedPreKey.id, _signedPreKey);
 
-    await _publicarMeuBundle(preKeys);
-    _escutarMensagensEntrantes();
-    await verificarMensagensPendentes();
+    await _gerarPreKeys(100);
 
-    _inicializado = true;
+    final cofre = _cofre!;
+    await cofre.put(
+        _k('identity'), base64Encode(_identityKeyPair.serialize()));
+    await cofre.put(_k('regid'), _registrationId.toString());
+    await cofre.put(_k('signed'), base64Encode(_signedPreKey.serialize()));
+    await _persistirEstado();
+  }
+
+  Future<void> _gerarPreKeys(int quantidade) async {
+    final int inicio = _proximoPreKeyId < 1 ? 1 : _proximoPreKeyId;
+    final novas = generatePreKeys(inicio, quantidade);
+    for (final p in novas) {
+      await _preKeyStore.storePreKey(p.id, p);
+      _preKeyIds.add(p.id);
+    }
+    _proximoPreKeyId = inicio + quantidade;
+  }
+
+  /// Lê as chaves/sessões salvas. Retorna false se não há nada (ou se falhar).
+  Future<bool> _restaurarEstado() async {
+    final cofre = _cofre!;
+    final String? identidade = cofre.get(_k('identity'));
+    final String? regId = cofre.get(_k('regid'));
+    final String? assinada = cofre.get(_k('signed'));
+    if (identidade == null || regId == null || assinada == null) return false;
+
+    try {
+      _identityKeyPair =
+          IdentityKeyPair.fromSerialized(base64Decode(identidade));
+      _registrationId = int.parse(regId);
+      _identityKeyStore =
+          InMemoryIdentityKeyStore(_identityKeyPair, _registrationId);
+
+      _signedPreKey = SignedPreKeyRecord.fromSerialized(base64Decode(assinada));
+      await _signedPreKeyStore.storeSignedPreKey(
+          _signedPreKey.id, _signedPreKey);
+
+      final Map<String, dynamic> prekeys =
+          (jsonDecode(cofre.get(_k('prekeys')) ?? '{}') as Map)
+              .cast<String, dynamic>();
+      for (final e in prekeys.entries) {
+        final int id = int.parse(e.key);
+        await _preKeyStore.storePreKey(
+            id, PreKeyRecord.fromBuffer(base64Decode(e.value as String)));
+        _preKeyIds.add(id);
+      }
+
+      _preKeysEnviadas.addAll(
+          ((jsonDecode(cofre.get(_k('enviadas')) ?? '[]')) as List)
+              .map((e) => (e as num).toInt()));
+      _proximoPreKeyId =
+          int.tryParse(cofre.get(_k('proximoPreKeyId')) ?? '') ?? 1;
+
+      _remotos.addAll(((jsonDecode(cofre.get(_k('remotos')) ?? '[]')) as List)
+          .cast<String>());
+
+      final Map<String, dynamic> sessoes =
+          (jsonDecode(cofre.get(_k('sessoes')) ?? '{}') as Map)
+              .cast<String, dynamic>();
+      for (final e in sessoes.entries) {
+        await _sessionStore.storeSession(
+          SignalProtocolAddress(e.key, 1),
+          SessionRecord.fromSerialized(base64Decode(e.value as String)),
+        );
+      }
+
+      final Map<String, dynamic> identidades =
+          (jsonDecode(cofre.get(_k('identidades')) ?? '{}') as Map)
+              .cast<String, dynamic>();
+      for (final e in identidades.entries) {
+        await _identityKeyStore.saveIdentity(
+          SignalProtocolAddress(e.key, 1),
+          IdentityKey.fromBytes(base64Decode(e.value as String), 0),
+        );
+      }
+      return true;
+    } catch (e) {
+      print('Cofre de chaves ilegível, gerando chaves novas: $e');
+      return false;
+    }
+  }
+
+  /// Grava no aparelho o estado atual (sessões, identidades, prekeys).
+  /// Chamado ANTES de enviar e ANTES de apagar a mensagem do servidor, pra
+  /// nunca perder o avanço do ratchet se o app fechar no meio.
+  Future<void> _persistirEstado() async {
+    final cofre = _cofre;
+    if (cofre == null) return;
+
+    final Map<String, String> sessoes = <String, String>{};
+    final Map<String, String> identidades = <String, String>{};
+    for (final String r in _remotos) {
+      final address = SignalProtocolAddress(r, 1);
+      if (await _sessionStore.containsSession(address)) {
+        final registro = await _sessionStore.loadSession(address);
+        sessoes[r] = base64Encode(registro.serialize());
+      }
+      final identidade = await _identityKeyStore.getIdentity(address);
+      if (identidade != null) {
+        identidades[r] = base64Encode(identidade.serialize());
+      }
+    }
+
+    // One-time prekeys que ainda existem (as usadas foram removidas pela lib).
+    final Map<String, String> prekeys = <String, String>{};
+    final List<int> restantes = <int>[];
+    for (final int id in _preKeyIds) {
+      if (await _preKeyStore.containsPreKey(id)) {
+        final registro = await _preKeyStore.loadPreKey(id);
+        prekeys['$id'] = base64Encode(registro.serialize());
+        restantes.add(id);
+      }
+    }
+    _preKeyIds
+      ..clear()
+      ..addAll(restantes);
+
+    await cofre.putAll(<String, String>{
+      _k('sessoes'): jsonEncode(sessoes),
+      _k('identidades'): jsonEncode(identidades),
+      _k('prekeys'): jsonEncode(prekeys),
+      _k('enviadas'): jsonEncode(_preKeysEnviadas.toList()),
+      _k('proximoPreKeyId'): _proximoPreKeyId.toString(),
+      _k('remotos'): jsonEncode(_remotos.toList()),
+    });
   }
 
   Future<void> encerrarCasulo() async {
@@ -148,7 +307,7 @@ class SignalCore {
     }
   }
 
-  Future<void> _publicarMeuBundle(List<PreKeyRecord> preKeys) async {
+  Future<void> _publicarMeuBundle({required bool primeiraVez}) async {
     await _supabase.from('signal_bundles').upsert({
       'user_id': _meuUserId,
       'registration_id': _registrationId,
@@ -160,21 +319,45 @@ class SignalCore {
       'signed_pre_key_signature': base64Encode(_signedPreKey.signature),
     }, onConflict: 'user_id');
 
-    // As prekeys de execuções anteriores não têm mais chave privada aqui:
-    // se ficassem no servidor, alguém poderia consumir uma e a mensagem
-    // nunca seria descriptografada.
-    await _supabase.from('signal_prekeys').delete().eq('user_id', _meuUserId);
+    if (primeiraVez) {
+      // Chaves novas: as prekeys antigas do servidor não servem mais.
+      await _supabase.from('signal_prekeys').delete().eq('user_id', _meuUserId);
+      _preKeysEnviadas.clear();
+    } else {
+      // Chaves reaproveitadas: só repõe se o estoque do servidor baixou.
+      final restantes = await _supabase
+          .from('signal_prekeys')
+          .select('pre_key_id')
+          .eq('user_id', _meuUserId);
+      if ((restantes as List).length < _minimoPreKeys) {
+        await _gerarPreKeys(_lotePreKeys);
+      }
+    }
 
-    final linhas = preKeys
-        .map((pk) => {
-              'user_id': _meuUserId,
-              'pre_key_id': pk.id,
-              'pre_key_public':
-                  base64Encode(pk.getKeyPair().publicKey.serialize()),
-            })
-        .toList();
+    await _enviarPreKeysNovas();
+    await _persistirEstado();
+  }
 
+  /// Sobe só as prekeys que nunca foram enviadas (as já usadas por outros não
+  /// voltam pro servidor, pra uma mesma prekey nunca ser usada duas vezes).
+  Future<void> _enviarPreKeysNovas() async {
+    final List<Map<String, dynamic>> linhas = <Map<String, dynamic>>[];
+    final List<int> ids = <int>[];
+    for (final int id in _preKeyIds) {
+      if (_preKeysEnviadas.contains(id)) continue;
+      if (!await _preKeyStore.containsPreKey(id)) continue;
+      final registro = await _preKeyStore.loadPreKey(id);
+      linhas.add(<String, dynamic>{
+        'user_id': _meuUserId,
+        'pre_key_id': id,
+        'pre_key_public':
+            base64Encode(registro.getKeyPair().publicKey.serialize()),
+      });
+      ids.add(id);
+    }
+    if (linhas.isEmpty) return;
     await _supabase.from('signal_prekeys').insert(linhas);
+    _preKeysEnviadas.addAll(ids);
   }
 
   void _escutarMensagensEntrantes() {
@@ -234,9 +417,10 @@ class SignalCore {
       if (conhecida != null &&
           _chaveEmBase64(conhecida) == _chaveEmBase64(identityKey)) {
         _sessoesEstabelecidas.add(userId);
+        _remotos.add(userId);
         return;
       }
-      // O outro lado reabriu o app e gerou chaves novas: descarta a sessão
+      // O outro lado trocou de chaves (reinstalou o app): descarta a sessão
       // antiga e aceita a nova identidade.
       await _sessionStore.deleteSession(address);
       await _identityKeyStore.saveIdentity(address, identityKey);
@@ -281,12 +465,15 @@ class SignalCore {
 
     await sessionBuilder.processPreKeyBundle(bundle);
     _sessoesEstabelecidas.add(userId);
+    _remotos.add(userId);
   }
 
   // ------------------------------------------------------------------ envio
 
   /// Criptografa [texto] na sessão com [destino] e põe na caixa de correio.
-  Future<void> _cifrarEEnviar(String destino, String texto) async {
+  /// [push] = false nos recibos: eles não geram notificação no aparelho.
+  Future<void> _cifrarEEnviar(String destino, String texto,
+      {bool push = true}) async {
     await _garantirSessao(destino);
 
     final address = SignalProtocolAddress(destino, 1);
@@ -301,11 +488,16 @@ class SignalCore {
     final ciphertextMessage =
         await sessionCipher.encrypt(Uint8List.fromList(utf8.encode(texto)));
 
+    // Estado salvo antes de enviar: se o app fechar agora, o ratchet não perde
+    // o passo já dado.
+    await _persistirEstado();
+
     await _supabase.from('signal_chat_messages').insert({
       'sender_id': _meuUserId,
       'recipient_id': destino,
       'payload': base64Encode(ciphertextMessage.serialize()),
       'payload_type': ciphertextMessage.getType(),
+      'push': push,
     });
   }
 
@@ -336,7 +528,7 @@ class SignalCore {
       'k': tipo, // 'delivery' | 'read'
       'ids': ids,
     });
-    return _cifrarEEnviar(destino, envelope);
+    return _cifrarEEnviar(destino, envelope, push: false);
   }
 
   /// Confirmação de leitura: avisa o remetente (criptografado) que as
@@ -389,6 +581,9 @@ class SignalCore {
     }
 
     _sessoesEstabelecidas.add(remetente);
+    _remotos.add(remetente);
+    // Salvo antes de apagar a linha do servidor: depois disso não há volta.
+    await _persistirEstado();
     return utf8.decode(textoPlanoBytes);
   }
 
