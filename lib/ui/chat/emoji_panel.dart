@@ -4,16 +4,24 @@ import 'package:wechat_flutter/ui/edit/emoji_text.dart';
 enum _AbaEmoji { emoji, gif, figurinha }
 
 /// Painel de emojis do chat, no estilo do WhatsApp: seletor com 3 abas
-/// (Emoji, GIF e Figurinhas) e o conteúdo da aba escolhida logo abaixo.
+/// (Emoji, GIF e Figurinhas) fixo no topo e o conteúdo da aba escolhida
+/// logo abaixo, ocupando todo o espaço restante.
+///
+/// [height] é a altura "útil" do painel (igual à altura do teclado).
+/// [bottomInset] é o padding inferior do dispositivo (barra de gestos /
+/// botões de navegação). Ele é SOMADO à altura, de modo que o conteúdo
+/// nunca fica escondido atrás da área do sistema.
 /// GIF e Figurinhas ainda são placeholders ("Em breve").
 class EmojiPanel extends StatefulWidget {
   final double height;
+  final double bottomInset;
   final ValueChanged<String> onEmojiSelected;
 
   const EmojiPanel({
     Key? key,
     required this.height,
     required this.onEmojiSelected,
+    this.bottomInset = 0.0,
   }) : super(key: key);
 
   @override
@@ -23,6 +31,7 @@ class EmojiPanel extends StatefulWidget {
 class _EmojiPanelState extends State<EmojiPanel> {
   static const Color _fundo = Color(0xfff6f6f6);
   static const Color _icone = Color(0xff54656f);
+  static const double _alturaSeletor = 54.0;
 
   _AbaEmoji _aba = _AbaEmoji.emoji;
 
@@ -44,9 +53,10 @@ class _EmojiPanelState extends State<EmojiPanel> {
     );
   }
 
+  /// Barra de abas fixa no topo do painel (nunca rola junto com a grade).
   Widget _seletorDeAbas() {
     return Container(
-      height: 54.0,
+      height: _alturaSeletor,
       alignment: Alignment.center,
       child: Container(
         width: 250.0,
@@ -91,7 +101,9 @@ class _EmojiPanelState extends State<EmojiPanel> {
   Widget _gradeDeEmojis() {
     final int total = EmojiUitl.instance.emojiMap.length;
     return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(10.0, 4.0, 10.0, 10.0),
+      // O padding inferior garante que a última linha de emojis nunca fique
+      // atrás da barra de gestos/navegação do dispositivo.
+      padding: EdgeInsets.fromLTRB(10.0, 4.0, 10.0, 10.0 + widget.bottomInset),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 8,
         mainAxisSpacing: 8.0,
@@ -115,25 +127,28 @@ class _EmojiPanelState extends State<EmojiPanel> {
   }
 
   Widget _emBreve(IconData icone, String titulo) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(icone, size: 56.0, color: Colors.black26),
-          const SizedBox(height: 10.0),
-          Text(
-            titulo,
-            style: const TextStyle(
-                fontSize: 16.0,
-                color: _icone,
-                fontWeight: FontWeight.w500),
-          ),
-          const SizedBox(height: 4.0),
-          const Text(
-            'Em breve',
-            style: TextStyle(fontSize: 14.0, color: Colors.black45),
-          ),
-        ],
+    return Padding(
+      padding: EdgeInsets.only(bottom: widget.bottomInset),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icone, size: 56.0, color: Colors.black26),
+            const SizedBox(height: 10.0),
+            Text(
+              titulo,
+              style: const TextStyle(
+                  fontSize: 16.0,
+                  color: _icone,
+                  fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 4.0),
+            const Text(
+              'Em breve',
+              style: TextStyle(fontSize: 14.0, color: Colors.black45),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -151,14 +166,26 @@ class _EmojiPanelState extends State<EmojiPanel> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: widget.height,
-      color: _fundo,
-      child: Column(
-        children: <Widget>[
-          _seletorDeAbas(),
-          Expanded(child: _conteudo()),
-        ],
+    // Altura total = altura do teclado + padding inferior do dispositivo.
+    // Quando o painel está fechado (height == 0) ele colapsa por completo.
+    final double alturaTotal =
+        widget.height > 0 ? widget.height + widget.bottomInset : 0.0;
+
+    return SizedBox(
+      height: alturaTotal,
+      width: double.infinity,
+      child: ClipRect(
+        child: ColoredBox(
+          color: _fundo,
+          child: Column(
+            children: <Widget>[
+              // Fixo no topo do painel.
+              _seletorDeAbas(),
+              // Ocupa todo o resto, sem estourar a altura.
+              Expanded(child: _conteudo()),
+            ],
+          ),
+        ),
       ),
     );
   }
