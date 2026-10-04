@@ -55,13 +55,13 @@ dependencies:
   hive_flutter: ^1.1.0 #integração do Hive com o ciclo de vida do Flutter
   libsignal_protocol_dart: ^0.6.2 #protocolo Signal (E2E) rodando no cliente
   supabase_flutter: ^2.6.0 #transporte das mensagens/bundles criptografados
-  firebase_core: ^3.8.0 #inicialização do Firebase
-  cloud_firestore: ^5.5.0 #transporte das mensagens (texto criptografado)
+  firebase_core: ^3.8.0 #base do Firebase (usado só pro push)
+  firebase_messaging: ^15.1.5 #push FCM: avisa "Nova mensagem" com o app fechado
   
 dependency_overrides:
   js: 0.7.1
+  geolocator_android: 4.6.2 #trava: versões 5.x exigem Flutter 3.29+ (o build usa 3.24.5)
   app_links: "6.3.1"
-  
 
 dev_dependencies:
   flutter_test:
