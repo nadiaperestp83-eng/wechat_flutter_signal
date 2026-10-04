@@ -1,0 +1,62 @@
+buildscript {
+    ext.kotlin_version = '1.9.24' // atualizado (era 1.7.22)
+
+    repositories {
+        google()
+        mavenCentral() // jcenter() removido — está desativado desde 2022
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.5.0' // atualizado (era 7.2.2)
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.buildDir = '../build'
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+// Plugins Android novos (ex.: geolocator_android) leem "flutter.compileSdkVersion"
+// e "flutter.minSdkVersion" no próprio build.gradle, propriedade que o Flutter
+// 3.24 não fornece aos plugins. Aqui damos esses valores a todo subprojeto,
+// exceto o :app (que já recebe a extensão "flutter" do plugin do Flutter).
+subprojects {
+    if (project.path != ':app') {
+        project.ext.flutter = [
+            compileSdkVersion: 35,
+            minSdkVersion    : 24,
+            targetSdkVersion : 35,
+            ndkVersion       : '27.0.12077973',
+        ]
+    }
+}
+
+// Rede de segurança: se algum plugin Android não informar o compileSdk
+// (acontece com plugins novos em Flutter mais antigo), usa 35.
+subprojects {
+    afterEvaluate { subproject ->
+        def androidExt = subproject.extensions.findByName('android')
+        if (androidExt != null) {
+            try {
+                if (androidExt.compileSdk == null) {
+                    androidExt.compileSdk = 35
+                }
+            } catch (ignored) {
+            }
+        }
+    }
+}
+subprojects {
+    project.evaluationDependsOn(':app')
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
