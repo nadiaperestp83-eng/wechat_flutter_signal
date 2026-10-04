@@ -58,8 +58,12 @@ class _ChatPageState extends State<ChatPage> {
       });
     }
     _focusNode.addListener(() {
-      if (_focusNode.hasFocus) {
-        _emojiState = false;
+      if (_focusNode.hasFocus && mounted) {
+        // Teclado abriu: fecha emoji/mais para não empilhar painéis.
+        setState(() {
+          _emojiState = false;
+          _isMore = false;
+        });
       }
     });
   }
@@ -178,10 +182,16 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (keyboardHeight == 270.0 &&
-        MediaQuery.of(context).viewInsets.bottom != 0) {
-      keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final MediaQueryData mq = MediaQuery.of(context);
+    // Padding inferior do dispositivo (barra de gestos / botões de navegação).
+    final double bottomSafe = mq.padding.bottom;
+    // Memoriza a altura real do teclado para o painel ter exatamente o mesmo
+    // tamanho (como no WhatsApp), evitando "pulos" na troca teclado <-> painel.
+    if (mq.viewInsets.bottom > 100.0) {
+      keyboardHeight = mq.viewInsets.bottom;
     }
+    final bool tecladoAberto = mq.viewInsets.bottom > 0;
+    final bool painelAberto = _emojiState || (_isMore && !_focusNode.hasFocus);
     final List<Widget> body = <Widget>[
       if (chatData != null)
         ChatDetailsBody(sC: _sC, chatData: chatData)
@@ -211,14 +221,16 @@ class _ChatPageState extends State<ChatPage> {
         id: widget.id,
         type: widget.type,
       ),
-      Visibility(
-        visible: _emojiState,
-        child: emojiWidget(),
-      ),
+      // Painel de emojis: ancorado logo abaixo da barra de entrada.
+      emojiWidget(bottomSafe),
+      // Painel "mais" (+): mesma altura do teclado + padding inferior.
       Container(
-        height: _isMore && !_focusNode.hasFocus ? keyboardHeight : 0.0,
+        height: _isMore && !_focusNode.hasFocus
+            ? keyboardHeight + bottomSafe
+            : 0.0,
         width: Get.width,
         color: const Color(AppColors.ChatBoxBg),
+        padding: EdgeInsets.only(bottom: bottomSafe),
         child: IndicatorPageView(
           pageC: pageC,
           pages: List.generate(2, (int index) {
@@ -230,6 +242,13 @@ class _ChatPageState extends State<ChatPage> {
             );
           }),
         ),
+      ),
+      // Nenhum painel nem teclado aberto: reserva a área segura inferior para
+      // a barra de entrada não ficar atrás da barra de gestos.
+      Container(
+        height: (!painelAberto && !tecladoAberto) ? bottomSafe : 0.0,
+        width: Get.width,
+        color: const Color(AppColors.ChatBoxBg),
       ),
     ];
 
@@ -246,6 +265,9 @@ class _ChatPageState extends State<ChatPage> {
     ];
 
     return Scaffold(
+      // O corpo encolhe com o teclado: a caixa de texto e a barra inferior
+      // sobem juntas e ficam coladas no teclado / no painel de emojis.
+      resizeToAvoidBottomInset: true,
       appBar: ComMomBar(
           title: newGroupName ?? widget.title, rightDMActions: rWidget),
       body: MainInputBody(
@@ -261,10 +283,11 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Widget emojiWidget() {
+  Widget emojiWidget(double bottomSafe) {
     return GestureDetector(
       child: EmojiPanel(
         height: _emojiState ? keyboardHeight : 0,
+        bottomInset: bottomSafe,
         onEmojiSelected: insertText,
       ),
       onTap: () {},
@@ -278,5 +301,8 @@ class _ChatPageState extends State<ChatPage> {
     Notice.removeListenerByEvent(WeChatActions.msg());
     Notice.removeListenerByEvent(WeChatActions.groupName());
     _sC.dispose();
+    _focusNode.dispose();
+    _textController.dispose();
+    pageC.dispose();
   }
 }
