@@ -7,83 +7,133 @@ import 'package:wechat_flutter/ui/dialog/voice_dialog.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 typedef VoiceFile = void Function(String path);
 
 class ChatVoice extends StatefulWidget {
   final VoiceFile? voiceFile;
 
-  ChatVoice({this.voiceFile});
+  /// Duração da gravação, em segundos (chamado antes de enviar o áudio).
+  final ValueChanged<int>? onDuration;
+
+  ChatVoice({this.voiceFile, this.onDuration});
 
   @override
   _ChatVoiceWidgetState createState() => _ChatVoiceWidgetState();
 }
 
 class _ChatVoiceWidgetState extends State<ChatVoice> {
+  static const String _textoPadrao = 'Segure para falar';
+
   double startY = 0.0;
   double offset = 0.0;
   int? index;
 
   bool isUp = false;
-  String textShow = "按住说话";
-  String toastShow = "手指上滑,取消发送";
+  String textShow = _textoPadrao;
+  String toastShow = 'Deslize para cima para cancelar';
   String voiceIco = "images/voice_volume_1.png";
-
-  StreamSubscription? _recorderSubscription;
-  StreamSubscription? _dbPeakSubscription;
 
   ///默认隐藏状态
   bool voiceState = true;
   OverlayEntry? overlayEntry;
-  late FlutterSound flutterSound;
+
+  // --- Gravação (flutter_sound) ---
+  FlutterSoundRecorder? _recorder;
+  Future<void>? _inicio;
+  String? _arquivo;
+  String? _erroGravacao;
+  final Stopwatch _cronometro = Stopwatch();
+  bool _gravando = false;
+  bool _permissaoOk = false;
 
   @override
   void initState() {
     super.initState();
-    flutterSound = FlutterSound();
     initializeDateFormatting();
+    Permission.microphone.status.then((s) => _permissaoOk = s.isGranted);
   }
 
-  void start() async {
-    print('开始拉。当前路径');
-    showToast( "正在兼容最新flutter");
-    // try {
-    //   String path = await flutterSound
-    //       .startRecorder(Platform.isIOS ? 'ios.m4a' : 'android.mp4');
-    //   widget.voiceFile?.call(path);
-    //   _recorderSubscription =
-    //       flutterSound.onRecorderStateChanged.listen((e) {});
-    // } catch (err) {
-    //   RecorderRunningException e = err;
-    //   showToast( 'startRecorder error: ${e.message}');
-    // }
+  @override
+  void dispose() {
+    overlayEntry?.remove();
+    overlayEntry = null;
+    _recorder?.closeRecorder();
+    super.dispose();
   }
 
-  void stop() async {
-    // try {
-    //   String result = await flutterSound.stopRecorder();
-    //   print('stopRecorder: $result');
-    //
-    //   _recorderSubscription?.cancel();
-    //   _recorderSubscription = null;
-    //   _dbPeakSubscription?.cancel();
-    //   _dbPeakSubscription = null;
-    // } catch (err) {
-    //   RecorderStoppedException e = err;
-    //   showToast( 'stopRecorder error: ${e.message}');
-    // }
+  Future<void> _pedirPermissao() async {
+    final status = await Permission.microphone.request();
+    _permissaoOk = status.isGranted;
+    if (_permissaoOk) {
+      showToast('Microfone liberado. Segure o botão de novo para gravar.');
+    } else if (status.isPermanentlyDenied) {
+      showToast('Permissão do microfone bloqueada. Ative nas configurações do app.');
+      openAppSettings();
+    } else {
+      showToast('Precisamos do microfone para gravar áudio.');
+    }
+  }
+
+  Future<void> _abrirEIniciar() async {
+    try {
+      _erroGravacao = null;
+      _recorder ??= FlutterSoundRecorder();
+      await _recorder!.openRecorder();
+      _arquivo =
+          '${Directory.systemTemp.path}/voz_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await _recorder!.startRecorder(toFile: _arquivo, codec: Codec.aacMP4);
+    } catch (e) {
+      _erroGravacao = e.toString();
+    }
+  }
+
+  void start() {
+    _cronometro
+      ..reset()
+      ..start();
+    _inicio = _abrirEIniciar();
+  }
+
+  /// Para a gravação e devolve o caminho do arquivo (ou null se falhou).
+  Future<String?> stop() async {
+    try {
+      await _inicio;
+      _cronometro.stop();
+      if (_erroGravacao != null) {
+        showToast('Não foi possível gravar: $_erroGravacao');
+        return null;
+      }
+      final rec = _recorder;
+      if (rec == null) return null;
+      final String? saida = await rec.stopRecorder();
+      await rec.closeRecorder();
+      _recorder = null;
+      return saida ?? _arquivo;
+    } catch (e) {
+      showToast('Erro ao parar a gravação: $e');
+      return null;
+    }
   }
 
   void showVoiceView() {
+    if (_gravando) return;
+    if (!_permissaoOk) {
+      _pedirPermissao();
+      return;
+    }
+    _gravando = true;
+
     setState(() {
-      textShow = "松开结束";
+      textShow = 'Solte para enviar';
       voiceState = false;
       DateTime now = DateTime.now();
       int date = now.millisecondsSinceEpoch;
       DateTime current = DateTime.fromMillisecondsSinceEpoch(date);
 
       String recordingTime =
-      DateTimeForMater.formatDateV(current, format: "ss:SS");
+          DateTimeForMater.formatDateV(current, format: "ss:SS");
       index = int.parse(recordingTime.substring(3, 5));
     });
 
@@ -94,33 +144,57 @@ class _ChatVoiceWidgetState extends State<ChatVoice> {
     }
   }
 
-  void hideVoiceView() {
-    setState(() {
-      textShow = "按住说话";
-      voiceState = true;
-    });
+  Future<void> hideVoiceView() async {
+    if (!_gravando) return;
+    _gravando = false;
+    final bool cancelar = isUp;
 
-    stop();
+    if (mounted) {
+      setState(() {
+        textShow = _textoPadrao;
+        voiceState = true;
+      });
+    }
     overlayEntry?.remove();
     overlayEntry = null;
 
-    if (isUp) {
-      print("取消发送");
-    } else {
-      print("进行发送");
-      Notice.send(WeChatActions.voiceImg(), true);
+    final String? arquivo = await stop();
+    final int milissegundos = _cronometro.elapsedMilliseconds;
+    isUp = false;
+
+    if (arquivo == null) return;
+
+    Future<void> descartar() async {
+      try {
+        await File(arquivo).delete();
+      } catch (_) {}
     }
+
+    if (cancelar) {
+      showToast('Envio cancelado');
+      await descartar();
+      return;
+    }
+    if (milissegundos < 1000) {
+      showToast('Segure o botão para gravar');
+      await descartar();
+      return;
+    }
+
+    widget.voiceFile?.call(arquivo);
+    widget.onDuration?.call((milissegundos / 1000).round());
+    Notice.send(WeChatActions.voiceImg(), true);
   }
 
   void moveVoiceView() {
     setState(() {
       isUp = startY - offset > 100;
       if (isUp) {
-        textShow = "松开手指,取消发送";
+        textShow = 'Solte para cancelar';
         toastShow = textShow;
       } else {
-        textShow = "松开结束";
-        toastShow = "手指上滑,取消发送";
+        textShow = 'Solte para enviar';
+        toastShow = 'Deslize para cima para cancelar';
       }
     });
   }
