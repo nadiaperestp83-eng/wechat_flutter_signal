@@ -51,7 +51,8 @@ Future<void> sendTextMsg(String targetId, int type, String context,
     await SignalCore().enviarMensagemSegura(targetId, context, msgId: msgID);
 
     // 2 = servidor recebeu (1 visto cinza). Os recibos sobem pra 6/7.
-    await SignalLocalStore.updateMessageStatus(targetId, msgID, 2);
+    // upgrade (e não update): se o recibo de entrega já chegou, não rebaixa.
+    await SignalLocalStore.upgradeMessageStatus(targetId, [msgID], 2);
     eventBusNewMsg.value = EventBusNewMsg(targetId);
   } catch (e) {
     await SignalLocalStore.updateMessageStatus(targetId, msgID, 4);
