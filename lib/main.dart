@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -26,6 +27,13 @@ void main() async {
     url: signalSupabaseUrl,
     anonKey: signalSupabaseAnonKey,
   );
+
+  /// Firebase só pro push (FCM). Se falhar, o app continua sem notificações.
+  try {
+    await Firebase.initializeApp();
+  } catch (e) {
+    debugPrint('Firebase indisponível (sem push): $e');
+  }
 
   /// 数据初始化
   await Data.initData();
