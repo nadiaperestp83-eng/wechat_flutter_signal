@@ -1,0 +1,43 @@
+name: Deploy Supabase Push Function
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/send-push/**'
+      - 'supabase/config.toml'
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Instalar Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Vincular ao projeto Supabase
+        run: supabase link --project-ref qsmswvhfqaeebhxtfqwh
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Configurar secrets da Edge Function
+        run: |
+          supabase secrets set \
+            "FCM_SERVICE_ACCOUNT=$FCM_SERVICE_ACCOUNT" \
+            "PUSH_WEBHOOK_SECRET=$PUSH_WEBHOOK_SECRET" \
+            --project-ref qsmswvhfqaeebhxtfqwh
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          FCM_SERVICE_ACCOUNT: ${{ secrets.FCM_SERVICE_ACCOUNT }}
+          PUSH_WEBHOOK_SECRET: ${{ secrets.PUSH_WEBHOOK_SECRET }}
+
+      - name: Deploy da função send-push
+        run: supabase functions deploy send-push --project-ref qsmswvhfqaeebhxtfqwh
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
