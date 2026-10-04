@@ -61,7 +61,7 @@ dependencies:
 dependency_overrides:
   js: 0.7.1
   app_links: "6.3.1"
-  geolocator_android: ^4.5.6
+  
 
 dev_dependencies:
   flutter_test:
