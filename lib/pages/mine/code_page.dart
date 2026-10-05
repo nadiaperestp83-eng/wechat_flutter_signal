@@ -1,8 +1,16 @@
 import 'package:get/get.dart';
+import 'package:provider/provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:wechat_flutter/provider/global_model.dart';
+import 'package:wechat_flutter/tools/tr_app.dart';
 import 'package:wechat_flutter/ui/dialog/code_dialog.dart';
 import 'package:flutter/material.dart';
 
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
+
+/// Conteúdo do QR do perfil. Um leitor de QR (a implementar) deve reconhecer
+/// o prefixo e adicionar o e-mail como contato.
+String conteudoQrDoPerfil(String email) => 'wcf:add:${email.toLowerCase()}';
 
 class CodePage extends StatefulWidget {
   final bool isGroup;
@@ -17,8 +25,98 @@ class _CodePageState extends State<CodePage> {
   List<String> data = ['换个样式', '保存到手机', '扫描二维码', '重置二维码'];
   List<String> groupData = ['保存到手机', '扫描二维码'];
 
+  /// QR real do meu perfil (e-mail), com foto e nome.
+  Widget _perfilPessoal(BuildContext context) {
+    final GlobalModel model = Provider.of<GlobalModel>(context);
+    final String nome = (strNoEmpty(model.nickName) && model.nickName != 'nickName')
+        ? model.nickName
+        : model.account;
+
+    return Scaffold(
+      backgroundColor: chatBg,
+      appBar: ComMomBar(
+        title: trApp('Meu QR code', en: 'My QR code', zh: '我的二维码'),
+        backgroundColor: chatBg,
+      ),
+      body: SingleChildScrollView(
+        child: Container(
+          margin: EdgeInsets.only(left: 20.0, right: 20.0, top: Get.height / 14),
+          padding: const EdgeInsets.all(24.0),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16.0),
+          ),
+          child: Column(
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  ClipOval(
+                    child: ImageView(
+                      img: strNoEmpty(model.avatar) ? model.avatar : defIcon,
+                      width: 48.0,
+                      height: 48.0,
+                      fit: BoxFit.cover,
+                      isRadius: false,
+                    ),
+                  ),
+                  const SizedBox(width: 14.0),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(nome,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 17.0, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 2.0),
+                        Text(model.account,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 13.0, color: mainTextColor)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24.0),
+              QrImageView(
+                data: conteudoQrDoPerfil(model.account),
+                version: QrVersions.auto,
+                size: Get.width - 88.0,
+                backgroundColor: Colors.white,
+              ),
+              const SizedBox(height: 16.0),
+              Text(
+                trApp('Peça para a pessoa escanear este código para te adicionar.',
+                    en: 'Ask the other person to scan this code to add you.',
+                    zh: '让对方扫描此二维码添加您。'),
+                textAlign: TextAlign.center,
+                style: TextStyle(color: mainTextColor),
+              ),
+              const SizedBox(height: 12.0),
+              TextButton.icon(
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: model.account));
+                  showToast(trApp('E-mail copiado',
+                      en: 'E-mail copied', zh: '邮箱已复制'));
+                },
+                icon: const Icon(Icons.copy, size: 18.0),
+                label: Text(trApp('Copiar meu e-mail',
+                    en: 'Copy my e-mail', zh: '复制我的邮箱')),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!widget.isGroup) return _perfilPessoal(context);
+
     var rWidget = [
       new SizedBox(
         width: 60,
