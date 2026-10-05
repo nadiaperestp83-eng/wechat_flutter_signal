@@ -3,14 +3,16 @@ import 'dart:developer';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:tencent_cloud_chat_sdk/manager/v2_tim_manager.dart';
+import 'package:wechat_flutter/core/presence_service.dart';
 import 'package:wechat_flutter/core/push_service.dart';
 import 'package:tencent_cloud_chat_sdk/models/v2_tim_value_callback.dart';
 import 'package:wechat_flutter/http/api.dart';
 import 'package:wechat_flutter/pages/contacts/contacts_page.dart';
-import 'package:wechat_flutter/pages/discover/discover_page.dart';
 import 'package:wechat_flutter/pages/home/home_page.dart';
 import 'package:wechat_flutter/pages/mine/mine_page.dart';
 import 'package:wechat_flutter/pages/root/root_tabbar.dart';
+import 'package:wechat_flutter/pages/settings/settings_page.dart';
+import 'package:wechat_flutter/tools/tr_app.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 
 class RootPage extends StatefulWidget {
@@ -28,6 +30,14 @@ class _RootPageState extends State<RootPage> {
     updateApi(context);
     // Liga o chat (chaves + Realtime) e o push, inclusive ao reabrir o app.
     PushService.instance.iniciar();
+    // Presença real (online / visto por último) via Supabase.
+    _iniciarPresenca();
+  }
+
+  Future<void> _iniciarPresenca() async {
+    final String? meuId = await SharedUtil.instance.getString(Keys.account);
+    if (meuId == null || meuId.isEmpty) return;
+    await PresenceService.instance.iniciar(meuId);
   }
 
   Future<void> ifBrokenNetwork() async {
@@ -57,7 +67,7 @@ class _RootPageState extends State<RootPage> {
   Widget build(BuildContext context) {
     List<TabBarModel> pages = <TabBarModel>[
       TabBarModel(
-          title: S.of(context).weChat,
+          title: trApp('Chats', en: 'Chats', zh: '聊天'),
           icon: LoadImage('assets/images/tabbar_chat_c.webp'),
           selectIcon: LoadImage('assets/images/tabbar_chat_s.webp'),
           page: HomePage()),
@@ -68,16 +78,18 @@ class _RootPageState extends State<RootPage> {
         page: const ContactsPage(),
       ),
       TabBarModel(
-        title: S.of(context).discover,
-        icon: LoadImage('assets/images/tabbar_discover_c.webp'),
-        selectIcon: LoadImage('assets/images/tabbar_discover_s.webp'),
-        page: DiscoverPage(),
+        title: trApp('Configurações', en: 'Settings', zh: '设置'),
+        icon: const Icon(Icons.settings_outlined),
+        selectIcon: const Icon(Icons.settings),
+        page: const SettingsPage(),
+        hideAppBar: true,
       ),
       TabBarModel(
-        title: S.of(context).me,
+        title: trApp('Perfil', en: 'Profile', zh: '个人资料'),
         icon: LoadImage('assets/images/tabbar_me_c.webp'),
         selectIcon: LoadImage('assets/images/tabbar_me_s.webp'),
         page: MinePage(),
+        hideAppBar: true,
       ),
     ];
     return Scaffold(
