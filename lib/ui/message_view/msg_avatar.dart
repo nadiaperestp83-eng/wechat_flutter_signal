@@ -65,9 +65,11 @@ class _MsgAvatarState extends State<MsgAvatar> with TickerProviderStateMixin {
           ),
           margin: const EdgeInsets.only(right: 10.0),
           child: ImageView(
-            img: widget.model.userID == widget.globalModel.account
-                ? widget.globalModel.avatar
-                : widget.model.faceUrl ?? defIcon,
+            img: widget.model.isSelf == true
+                ? (widget.globalModel.avatar.isNotEmpty
+                    ? widget.globalModel.avatar
+                    : defIcon)
+                : 'perfil:${widget.model.sender ?? widget.model.userID ?? ''}',
             height: 35,
             width: 35,
             fit: BoxFit.cover,
@@ -81,7 +83,9 @@ class _MsgAvatarState extends State<MsgAvatar> with TickerProviderStateMixin {
         Get.to<void>(ContactsDetailsPage(
           title: widget.model.nickName,
           avatar: widget.model.faceUrl,
-          id: widget.model.id,
+          id: widget.model.isSelf == true
+              ? widget.globalModel.account
+              : (widget.model.sender ?? widget.model.userID),
         ));
       },
     );
