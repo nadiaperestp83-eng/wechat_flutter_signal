@@ -5,9 +5,18 @@ import 'package:hive/hive.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'package:tencent_cloud_chat_sdk/enum/message_elem_type.dart';
+import 'package:wechat_flutter/core/moments_service.dart';
 import 'package:wechat_flutter/core/profile_service.dart';
 import 'package:wechat_flutter/im/local_store.dart';
 import 'package:wechat_flutter/tools/event/im_event.dart';
+
+/// Resultado de cifrar algo na sessão Signal sem enviar pela caixa de correio
+/// (usado pelos Momentos, que viajam por Realtime Broadcast).
+class CanalCifrado {
+  final String payload; // base64
+  final int tipo;
+  const CanalCifrado(this.payload, this.tipo);
+}
 
 class MensagemDescriptografada {
   final String remetente;
@@ -128,6 +137,8 @@ class SignalCore {
     await verificarMensagensPendentes();
 
     _inicializado = true;
+    // Momentos efêmeros (Broadcast + Hive local).
+    unawaited(MomentsService.instance.iniciar(meuUserId));
   }
 
   Future<void> _gerarChavesNovas() async {
@@ -269,6 +280,7 @@ class SignalCore {
   }
 
   Future<void> encerrarCasulo() async {
+    await MomentsService.instance.parar();
     final canal = _canal;
     _canal = null;
     if (canal != null) {
@@ -284,6 +296,7 @@ class SignalCore {
     try {
       _escutarMensagensEntrantes();
       await verificarMensagensPendentes();
+      await MomentsService.instance.reconectar();
     } catch (e) {
       print('Erro ao reconectar o Casulo: $e');
     }
@@ -563,6 +576,37 @@ class SignalCore {
     } catch (e) {
       print('Chave de perfil inválida de $remetente: $e');
     }
+  }
+
+  /// Cifra [texto] na sessão com [destino] SEM gravar nada no servidor.
+  /// Quem chama entrega o resultado por Realtime Broadcast.
+  Future<CanalCifrado> cifrarParaCanal(String destino, String texto) {
+    return _serializar<CanalCifrado>(() async {
+      await _garantirSessao(destino);
+      final address = SignalProtocolAddress(destino, 1);
+      final sessionCipher = SessionCipher(
+        _sessionStore,
+        _preKeyStore,
+        _signedPreKeyStore,
+        _identityKeyStore,
+        address,
+      );
+      final mensagem =
+          await sessionCipher.encrypt(Uint8List.fromList(utf8.encode(texto)));
+      await _persistirEstado();
+      return CanalCifrado(
+          base64Encode(mensagem.serialize()), mensagem.getType());
+    });
+  }
+
+  /// Abre algo cifrado por [cifrarParaCanal] do outro lado. Se [remetente]
+  /// não for quem diz ser, a descriptografia falha.
+  Future<String> decifrarDeCanal(
+      String remetente, String payloadBase64, int tipo) {
+    return _serializar<String>(() => _decifrar(remetente, <String, dynamic>{
+          'payload': payloadBase64,
+          'payload_type': tipo,
+        }));
   }
 
   Future<void> _enviarReciboInterno(
