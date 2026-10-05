@@ -85,9 +85,13 @@ class _MinePageState extends State<MinePage> {
         height: 60.0,
         child: new ClipRRect(
           borderRadius: BorderRadius.all(Radius.circular(5.0)),
-          child: strNoEmpty(model.avatar)
-              ? dynamicAvatar(model.avatar)
-              : new Image.asset(defIcon, fit: BoxFit.cover),
+          child: ImageView(
+            img: strNoEmpty(model.avatar) ? model.avatar : defIcon,
+            width: 60.0,
+            height: 60.0,
+            fit: BoxFit.cover,
+            isRadius: false,
+          ),
         ),
       ),
       new Container(
