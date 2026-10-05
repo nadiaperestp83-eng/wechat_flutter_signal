@@ -125,8 +125,7 @@ class RootTabBarState extends State<RootTabBar> {
           child: bottomNavigationBar,
         ),
       ),
-      appBar:
-          widget.pages[currentIndex].title != S.of(context).me ? appBar : null,
+      appBar: widget.pages[currentIndex].hideAppBar ? null : appBar,
       body: ScrollConfiguration(
         behavior: MyBehavior(),
         child: PageView.builder(
@@ -152,10 +151,14 @@ class TabBarModel {
     required this.page,
     required this.icon,
     required this.selectIcon,
+    this.hideAppBar = false,
   });
 
   final String title;
   final Widget icon;
   final Widget selectIcon;
   final Widget page;
+
+  /// Abas com cabeçalho próprio (Configurações, Perfil) escondem a barra do topo.
+  final bool hideAppBar;
 }
