@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:wechat_flutter/tools/tr_zh.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 
 class LabelRow extends StatelessWidget {
@@ -55,7 +56,7 @@ class LabelRow extends StatelessWidget {
               SizedBox(
                 width: labelWidth,
                 child: Text(
-                  label ?? '',
+                  trZh(label ?? ''),
                   style: TextStyle(fontSize: 17.0),
                 ),
               ),
