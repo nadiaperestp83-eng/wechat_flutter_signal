@@ -1,14 +1,9 @@
-import 'dart:async';
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
-import 'package:wechat_flutter/core/profile_service.dart';
-import 'package:wechat_flutter/core/signal_core.dart';
 import 'package:wechat_flutter/pages/mine/change_name_page.dart';
 import 'package:wechat_flutter/pages/mine/code_page.dart';
+import 'package:wechat_flutter/pages/mine/foto_perfil_acoes.dart';
 import 'package:wechat_flutter/provider/global_model.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 import 'package:wechat_flutter/ui/orther/label_row.dart';
@@ -37,121 +32,15 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
     }
   }
 
-  String _meuId(GlobalModel model) {
-    if (model.account.isNotEmpty) return model.account;
-    return SignalCore().meuUserId;
-  }
-
-  /// Menu com as opções da foto de perfil.
-  Future<void> _abrirOpcoesDaFoto(GlobalModel model) async {
+  void _abrirOpcoesDaFoto(GlobalModel model) {
     if (_enviando) return;
-    final bool temFoto = strNoEmpty(model.avatar);
-
-    final String? escolha = await showModalBottomSheet<String>(
-      context: context,
-      builder: (BuildContext ctx) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              ListTile(
-                leading: const Icon(Icons.photo_library_outlined),
-                title: const Text('Escolher da galeria'),
-                onTap: () => Navigator.pop(ctx, 'galeria'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_camera_outlined),
-                title: const Text('Tirar foto'),
-                onTap: () => Navigator.pop(ctx, 'camera'),
-              ),
-              if (temFoto)
-                ListTile(
-                  leading: const Icon(Icons.delete_outline, color: Colors.red),
-                  title: const Text('Remover foto',
-                      style: TextStyle(color: Colors.red)),
-                  onTap: () => Navigator.pop(ctx, 'remover'),
-                ),
-              ListTile(
-                leading: const Icon(Icons.close),
-                title: const Text('Cancelar'),
-                onTap: () => Navigator.pop(ctx),
-              ),
-            ],
-          ),
-        );
+    FotoPerfilAcoes.abrirOpcoes(
+      context,
+      model,
+      aoMudarEnvio: (bool v) {
+        if (mounted) setState(() => _enviando = v);
       },
     );
-
-    if (!mounted || escolha == null) return;
-    switch (escolha) {
-      case 'galeria':
-        await _definirFoto(model, ImageSource.gallery);
-        break;
-      case 'camera':
-        await _definirFoto(model, ImageSource.camera);
-        break;
-      case 'remover':
-        await _removerFoto(model);
-        break;
-    }
-  }
-
-  /// Escolhe a imagem, cifra com a Profile Key (no aparelho) e envia só o
-  /// blob cifrado ao servidor.
-  Future<void> _definirFoto(GlobalModel model, ImageSource origem) async {
-    final String meuId = _meuId(model);
-    if (meuId.isEmpty) {
-      showToast('Sessão inválida — faça login de novo');
-      return;
-    }
-
-    try {
-      final XFile? arquivo = await ImagePicker().pickImage(
-        source: origem,
-        maxWidth: 640,
-        maxHeight: 640,
-        imageQuality: 80,
-      );
-      if (arquivo == null) return;
-
-      if (mounted) setState(() => _enviando = true);
-      final Uint8List bytes = await arquivo.readAsBytes();
-
-      await ProfileService.instance.definirMinhaFoto(meuId, bytes);
-
-      model.avatar = 'perfil:$meuId';
-      await SharedUtil.instance.saveString(Keys.faceUrl, model.avatar);
-      model.refresh();
-
-      // Garante que quem já conversa comigo tem a Profile Key.
-      unawaited(SignalCore().compartilharChaveDePerfil());
-
-      showToast('Foto de perfil atualizada');
-    } catch (e) {
-      showToast('Não foi possível atualizar a foto: $e');
-    } finally {
-      if (mounted) setState(() => _enviando = false);
-    }
-  }
-
-  Future<void> _removerFoto(GlobalModel model) async {
-    final String meuId = _meuId(model);
-    if (meuId.isEmpty) return;
-
-    try {
-      if (mounted) setState(() => _enviando = true);
-      await ProfileService.instance.removerMinhaFoto(meuId);
-
-      model.avatar = '';
-      await SharedUtil.instance.saveString(Keys.faceUrl, '');
-      model.refresh();
-
-      showToast('Foto de perfil removida');
-    } catch (e) {
-      showToast('Não foi possível remover a foto: $e');
-    } finally {
-      if (mounted) setState(() => _enviando = false);
-    }
   }
 
   Widget _fotoDePerfil(GlobalModel model) {
