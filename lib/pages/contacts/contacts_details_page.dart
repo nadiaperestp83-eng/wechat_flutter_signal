@@ -2,6 +2,7 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:wechat_flutter/ui/view/perfil_foto.dart';
+import 'package:wechat_flutter/ui/view/presence_text.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
@@ -222,6 +223,10 @@ class _ContactsDetailsPageState extends State<ContactsDetailsPage> {
           style: const TextStyle(fontSize: 24.0, fontWeight: FontWeight.w500),
         ),
       ),
+      if ((widget.id ?? '').isNotEmpty) ...<Widget>[
+        const SizedBox(height: 4.0),
+        PresenceText(userId: widget.id!, isSelf: isSelf),
+      ],
       const SizedBox(height: 24.0),
       if (!isSelf)
         Padding(
