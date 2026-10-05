@@ -1,19 +1,20 @@
-import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
+import 'package:wechat_flutter/core/moments_service.dart';
 import 'package:wechat_flutter/pages/wechat_friends/chat_style.dart';
-import 'package:wechat_flutter/pages/wechat_friends/from.dart';
+import 'package:wechat_flutter/pages/wechat_friends/page/publish_dynamic.dart';
 import 'package:wechat_flutter/pages/wechat_friends/ui/load_view.dart';
+import 'package:wechat_flutter/provider/global_model.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 
 import '../ui/item_dynamic.dart';
 
-//import 'package:multi_image_picker/multi_image_picker.dart';
-
-//import 'publish_dynamic.dart';
-
+/// Momentos: posts efêmeros (24 h), guardados só neste aparelho.
 class WeChatFriendsCircle extends StatefulWidget {
   WeChatFriendsCircle({Key? key}) : super(key: key);
 
@@ -22,8 +23,6 @@ class WeChatFriendsCircle extends StatefulWidget {
 }
 
 class _WeChatFriendsCircleState extends State<WeChatFriendsCircle> {
-  List<FriendsDynamic> friendsDynamic = [];
-
   double navAlpha = 0;
   late double headerHeight;
   ScrollController scrollController = ScrollController();
@@ -31,15 +30,14 @@ class _WeChatFriendsCircleState extends State<WeChatFriendsCircle> {
   Color c = Colors.grey;
   String title = '';
 
-//  List<Asset> images = List<Asset>();
-
-  int maxImages = 9;
+  int maxImages = MomentsService.maxImagens;
 
   @override
   void initState() {
     super.initState();
 
-    getData();
+    // Tudo que passou de 24 h some ao abrir a tela.
+    MomentsService.instance.purgarExpirados();
 
     headerHeight = 250;
 
@@ -72,8 +70,16 @@ class _WeChatFriendsCircleState extends State<WeChatFriendsCircle> {
     super.dispose();
   }
 
+  String _meuNome(GlobalModel model) {
+    final String n = model.nickName;
+    if (strNoEmpty(n) && n != 'nickName') return n;
+    return model.account;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final GlobalModel model = Provider.of<GlobalModel>(context);
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
@@ -98,15 +104,21 @@ class _WeChatFriendsCircleState extends State<WeChatFriendsCircle> {
                         children: <Widget>[
                           Padding(
                             padding: EdgeInsets.only(top: 10, right: 10),
-                            child: Text('张三',
+                            child: Text(_meuNome(model),
                                 style: TextStyle(
                                     color: Colors.white, fontSize: 17)),
                           ),
-                          ImageLoadView(
-                            'http://cdn.duitang.com/uploads/item/201409/18/20140918141220_N4Tic.thumb.700_0.jpeg',
-                            height: 70,
-                            width: 70,
+                          ClipRRect(
                             borderRadius: BorderRadius.circular(5.0),
+                            child: ImageView(
+                              img: strNoEmpty(model.avatar)
+                                  ? model.avatar
+                                  : defIcon,
+                              height: 70,
+                              width: 70,
+                              fit: BoxFit.cover,
+                              isRadius: false,
+                            ),
                           )
                         ]),
                     margin: EdgeInsets.only(right: 10),
@@ -114,13 +126,31 @@ class _WeChatFriendsCircleState extends State<WeChatFriendsCircle> {
                 ],
               ),
               SizedBox(height: 10),
-              ListView.builder(
-                  itemBuilder: (context, index) =>
-                      ItemDynamic(friendsDynamic[index]),
-                  itemCount: friendsDynamic.length,
-                  physics: NeverScrollableScrollPhysics(),
-                  shrinkWrap: true,
-                  primary: false)
+              ValueListenableBuilder<int>(
+                valueListenable: MomentsService.instance.versao,
+                builder: (BuildContext context, int _, Widget? __) {
+                  final List<MomentPost> posts = MomentsService.instance.listar();
+                  if (posts.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 60.0, horizontal: 30.0),
+                      child: Text(
+                        'Nenhum momento por aqui.\nOs momentos somem depois de 24 horas.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: mainTextColor),
+                      ),
+                    );
+                  }
+                  return ListView.builder(
+                      itemBuilder: (context, index) =>
+                          ItemDynamic(posts[index], key: ValueKey(posts[index].id)),
+                      itemCount: posts.length,
+                      physics: NeverScrollableScrollPhysics(),
+                      shrinkWrap: true,
+                      primary: false);
+                },
+              ),
+              SizedBox(height: 30),
             ]),
           ),
           Container(
@@ -142,34 +172,33 @@ class _WeChatFriendsCircleState extends State<WeChatFriendsCircle> {
     );
   }
 
-  void getData() async {
-    rootBundle.loadString('assets/data/friends.json').then((value) {
-      friendsDynamic = FriendsDynamic.fromMapList(
-          json.decode(value) as List<Map<String, dynamic>>);
-      setState(() {});
-    });
-  }
-
   void _showDialog(BuildContext context) {
     showDialog(
         context: context,
         builder: (context) => CupertinoAlertDialog(actions: <Widget>[
               CupertinoDialogAction(
-                child: Text('拍摄', style: TextStyles.textBlue16),
+                child: Text('Tirar foto', style: TextStyles.textBlue16),
                 onPressed: () {
-                  /// TODO
                   Navigator.pop(context);
+                  _tirarFoto();
                 },
               ),
               CupertinoDialogAction(
-                child: Text('从相册选择', style: TextStyles.textBlue16),
+                child: Text('Escolher da galeria', style: TextStyles.textBlue16),
                 onPressed: () {
+                  Navigator.pop(context);
                   loadAssets();
-                  Navigator.pop(context);
                 },
               ),
               CupertinoDialogAction(
-                child: Text('取消', style: TextStyles.textRed16),
+                child: Text('Só texto', style: TextStyles.textBlue16),
+                onPressed: () {
+                  Navigator.pop(context);
+                  Get.to<void>(PublishDynamicPage(maxImages: maxImages));
+                },
+              ),
+              CupertinoDialogAction(
+                child: Text('Cancelar', style: TextStyles.textRed16),
                 onPressed: () {
                   Navigator.pop(context);
                 },
@@ -177,62 +206,38 @@ class _WeChatFriendsCircleState extends State<WeChatFriendsCircle> {
             ]));
   }
 
+  Future<void> _tirarFoto() async {
+    try {
+      final XFile? foto = await ImagePicker().pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1080,
+        maxHeight: 1080,
+        imageQuality: 50,
+      );
+      if (foto == null || !mounted) return;
+      final Uint8List bytes = await foto.readAsBytes();
+      Get.to<void>(
+          PublishDynamicPage(images: <Uint8List>[bytes], maxImages: maxImages));
+    } catch (e) {
+      showToast('Não foi possível abrir a câmera: $e');
+    }
+  }
+
   Future<void> loadAssets() async {
-//    List<Asset> resultList = List<Asset>();
-//
-//    try {
-//      resultList = await MultiImagePicker.pickImages(
-//        maxImages: maxImages,
-//        enableCamera: false,
-//        selectedAssets: images,
-//        materialOptions: MaterialOptions(
-//          actionBarColor: "#ff00a5",
-//          actionBarTitle: "Flutter App",
-//          actionBarTitleColor: "#ffffffff",
-//          allViewTitle: "All Photos",
-//          useDetailsView: true,
-//          lightStatusBar: false,
-//          selectCircleStrokeColor: "#ff11ab",
-//          statusBarColor: '#ff00a5',
-//          startInAllView: true,
-//          selectionLimitReachedText: "You can't select any more.",
-//        ),
-//        cupertinoOptions: CupertinoOptions(
-//          selectionFillColor: "#ff11ab",
-//          selectionTextColor: "#ff00a5",
-//          selectionCharacter: "✓",
-//        ),
-//      );
-//
-//      for (var r in resultList) {
-//        var t = await r.filePath;
-//        print(t);
-//      }
-//    } on PlatformException catch (e) {
-//      debugPrint(e.message.toString());
-//    } on NoImagesSelectedException catch (e) {
-//      debugPrint(e.message.toString());
-//    } on PermissionDeniedException catch (e) {
-//      debugPrint(e.message.toString());
-//    } on PermissionPermanentlyDeniedExeption catch (e) {
-//      debugPrint(e.message.toString());
-//    } on Exception catch (e) {
-//      debugPrint(e.toString());
-//    }
-//
-//    // If the widget was removed from the tree while the asynchronous platform
-//    // message was in flight, we want to discard the reply rather than calling
-//    // setState to update our non-existent appearance.
-//    if (!mounted) return;
-//
-//    setState(() {
-//      images = resultList;
-//
-//      debugPrint(images.toString());
-//
-//      if (images.isNotEmpty) {
-//        Get.to<void>(PublishDynamicPage(images: images, maxImages: maxImages));
-//      }
-//    });
+    try {
+      final List<XFile>? fotos = await ImagePicker().pickMultiImage(
+        maxWidth: 1080,
+        maxHeight: 1080,
+        imageQuality: 50,
+      );
+      if (fotos == null || fotos.isEmpty || !mounted) return;
+      final List<Uint8List> bytes = <Uint8List>[];
+      for (final XFile f in fotos.take(maxImages)) {
+        bytes.add(await f.readAsBytes());
+      }
+      Get.to<void>(PublishDynamicPage(images: bytes, maxImages: maxImages));
+    } catch (e) {
+      showToast('Não foi possível abrir a galeria: $e');
+    }
   }
 }
