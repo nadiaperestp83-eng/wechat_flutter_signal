@@ -55,6 +55,8 @@ dependencies:
   hive_flutter: ^1.1.0 #integração do Hive com o ciclo de vida do Flutter
   libsignal_protocol_dart: ^0.6.2 #protocolo Signal (E2E) rodando no cliente
   supabase_flutter: ^2.6.0 #transporte das mensagens/bundles criptografados
+  pointycastle: ^3.7.3 #AES-256-GCM da foto de perfil (Profile Key) e anexos
+  qr_flutter: ^4.1.0 #QR code real do meu perfil (e-mail)
   firebase_core: ^3.8.0 #base do Firebase (usado só pro push)
   firebase_messaging: ^15.1.5 #push FCM: avisa "Nova mensagem" com o app fechado
   
