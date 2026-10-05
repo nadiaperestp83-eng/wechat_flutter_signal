@@ -5,6 +5,7 @@ import 'package:hive/hive.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'package:tencent_cloud_chat_sdk/enum/message_elem_type.dart';
+import 'package:wechat_flutter/core/profile_service.dart';
 import 'package:wechat_flutter/im/local_store.dart';
 import 'package:wechat_flutter/tools/event/im_event.dart';
 
@@ -511,13 +512,57 @@ class SignalCore {
     }
     final String id =
         msgId ?? 'm_${DateTime.now().millisecondsSinceEpoch}';
+    // Como no Signal: a Profile Key segue dentro da mensagem E2E, para o
+    // contato poder decifrar a minha foto de perfil.
+    final Uint8List chavePerfil =
+        await ProfileService.instance.minhaChave(_meuUserId);
     final String envelope = jsonEncode(<String, dynamic>{
       'v': 1,
       't': 'msg',
       'id': id,
       'text': textoPuro,
+      'pk': base64Encode(chavePerfil),
     });
     await _serializar<void>(() => _cifrarEEnviar(numeroDestino, envelope));
+  }
+
+  /// Entrega a minha Profile Key (criptografada, sem notificação) a quem já
+  /// conversa comigo. Chamado depois de definir/alterar a foto de perfil.
+  Future<void> compartilharChaveDePerfil() async {
+    if (!_inicializado) return;
+    final Uint8List chave =
+        await ProfileService.instance.minhaChave(_meuUserId);
+    final String envelope = jsonEncode(<String, dynamic>{
+      'v': 1,
+      't': 'pk',
+      'pk': base64Encode(chave),
+    });
+
+    final Set<String> destinos = <String>{
+      for (final Map<String, dynamic> c in SignalLocalStore.getConversations())
+        if (c['groupID'] == null && c['conversationID'] is String)
+          c['conversationID'] as String,
+      ..._remotos,
+    }..remove(_meuUserId);
+
+    for (final String destino in destinos) {
+      try {
+        await _serializar<void>(
+            () => _cifrarEEnviar(destino, envelope, push: false));
+      } catch (e) {
+        print('Não consegui enviar a chave de perfil para $destino: $e');
+      }
+    }
+  }
+
+  Future<void> _guardarChaveDePerfil(String remetente, dynamic bruto) async {
+    if (bruto is! String || bruto.isEmpty) return;
+    try {
+      await ProfileService.instance.guardarChaveDoContato(
+          remetente, Uint8List.fromList(base64Decode(bruto)));
+    } catch (e) {
+      print('Chave de perfil inválida de $remetente: $e');
+    }
   }
 
   Future<void> _enviarReciboInterno(
@@ -638,8 +683,13 @@ class SignalCore {
 
     switch (envelope['t'] as String) {
       case 'msg':
+        await _guardarChaveDePerfil(remetente, envelope['pk']);
         await _receberTexto(remetente, (envelope['text'] as String?) ?? '',
             msgId: envelope['id'] as String?);
+        break;
+      case 'pk':
+        await _guardarChaveDePerfil(remetente, envelope['pk']);
+        eventBusNewMsg.value = EventBusNewMsg(remetente);
         break;
       case 'rcpt':
         await _receberRecibo(remetente, envelope);
