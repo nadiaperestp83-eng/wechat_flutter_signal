@@ -8,7 +8,6 @@ import 'package:provider/provider.dart';
 import 'package:wechat_flutter/core/moments_service.dart';
 import 'package:wechat_flutter/pages/wechat_friends/chat_style.dart';
 import 'package:wechat_flutter/pages/wechat_friends/page/publish_dynamic.dart';
-import 'package:wechat_flutter/pages/wechat_friends/ui/load_view.dart';
 import 'package:wechat_flutter/provider/global_model.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 
@@ -23,51 +22,16 @@ class WeChatFriendsCircle extends StatefulWidget {
 }
 
 class _WeChatFriendsCircleState extends State<WeChatFriendsCircle> {
-  double navAlpha = 0;
-  late double headerHeight;
-  ScrollController scrollController = ScrollController();
-
-  Color c = Colors.grey;
-  String title = '';
+  static const double headerHeight = 250.0;
+  static const double avatarCapa = 70.0;
 
   int maxImages = MomentsService.maxImagens;
 
   @override
   void initState() {
     super.initState();
-
     // Tudo que passou de 24 h some ao abrir a tela.
     MomentsService.instance.purgarExpirados();
-
-    headerHeight = 250;
-
-    scrollController.addListener(() {
-      var offset = scrollController.offset;
-      if (offset < 0) {
-        if (navAlpha != 0) {
-          setState(() => navAlpha = 0);
-        }
-      } else if (offset < headerHeight) {
-        if (headerHeight - offset <= navigationBarHeight(context)) {
-          setState(() {
-            c = Colors.black;
-            title = '朋友圈';
-          });
-        } else {
-          c = Colors.white;
-          title = '';
-        }
-        setState(() => navAlpha = 1 - (headerHeight - offset) / headerHeight);
-      } else if (navAlpha != 1) {
-        setState(() => navAlpha = 1);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    scrollController.dispose();
-    super.dispose();
   }
 
   String _meuNome(GlobalModel model) {
@@ -76,98 +40,111 @@ class _WeChatFriendsCircleState extends State<WeChatFriendsCircle> {
     return model.account;
   }
 
+  /// Capa com nome e foto no canto (se a imagem da capa não carregar,
+  /// fica um fundo escuro no lugar, como no WeChat).
+  Widget _capa(GlobalModel model) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: <Widget>[
+        SizedBox(
+          width: double.infinity,
+          height: headerHeight,
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              Container(color: const Color(0xff555555)),
+              Image.network(
+                backgroundImage,
+                fit: BoxFit.cover,
+                errorBuilder: (BuildContext c, Object e, StackTrace? s) =>
+                    const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+        Positioned(
+          right: 12.0,
+          bottom: -(avatarCapa / 2) + 8,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.only(top: 10.0, right: 10.0),
+                child: Text(
+                  _meuNome(model),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 17.0,
+                      fontWeight: FontWeight.w600,
+                      shadows: <Shadow>[
+                        Shadow(blurRadius: 4.0, color: Colors.black54)
+                      ]),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(1.5),
+                color: Colors.white,
+                child: ImageView(
+                  img: strNoEmpty(model.avatar) ? model.avatar : defIcon,
+                  width: avatarCapa,
+                  height: avatarCapa,
+                  fit: BoxFit.cover,
+                  isRadius: false,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final GlobalModel model = Provider.of<GlobalModel>(context);
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Stack(
-        children: <Widget>[
-          SingleChildScrollView(
-            physics: BouncingScrollPhysics(),
-            controller: scrollController,
-            child: Column(children: <Widget>[
-              Stack(
-                alignment: Alignment.bottomRight,
-                children: <Widget>[
-                  Container(
-                      child: ImageLoadView(backgroundImage,
-                          fit: BoxFit.cover,
-                          height: headerHeight,
-                          width: Get.width),
-                      margin: EdgeInsets.only(bottom: 30.0)),
-                  Container(
-                    child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          Padding(
-                            padding: EdgeInsets.only(top: 10, right: 10),
-                            child: Text(_meuNome(model),
-                                style: TextStyle(
-                                    color: Colors.white, fontSize: 17)),
-                          ),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(5.0),
-                            child: ImageView(
-                              img: strNoEmpty(model.avatar)
-                                  ? model.avatar
-                                  : defIcon,
-                              height: 70,
-                              width: 70,
-                              fit: BoxFit.cover,
-                              isRadius: false,
-                            ),
-                          )
-                        ]),
-                    margin: EdgeInsets.only(right: 10),
-                  )
-                ],
-              ),
-              SizedBox(height: 10),
-              ValueListenableBuilder<int>(
-                valueListenable: MomentsService.instance.versao,
-                builder: (BuildContext context, int _, Widget? __) {
-                  final List<MomentPost> posts = MomentsService.instance.listar();
-                  if (posts.isEmpty) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 60.0, horizontal: 30.0),
-                      child: Text(
-                        'Nenhum momento por aqui.\nOs momentos somem depois de 24 horas.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: mainTextColor),
-                      ),
-                    );
-                  }
-                  return ListView.builder(
-                      itemBuilder: (context, index) =>
-                          ItemDynamic(posts[index], key: ValueKey(posts[index].id)),
-                      itemCount: posts.length,
-                      physics: NeverScrollableScrollPhysics(),
-                      shrinkWrap: true,
-                      primary: false);
-                },
-              ),
-              SizedBox(height: 30),
-            ]),
-          ),
-          Container(
-            height: navigationBarHeight(context) + 10,
-            child: new ComMomBar(
-              title: title,
-              rightDMActions: <Widget>[
-                IconButton(
-                  icon: Icon(Icons.add_a_photo, color: mainTextColor),
-                  onPressed: () => _showDialog(context),
-                )
-              ],
-              backgroundColor:
-                  Color.fromARGB((navAlpha * 255).toInt(), 237, 237, 237),
-            ),
+      appBar: ComMomBar(
+        title: 'Momentos',
+        rightDMActions: <Widget>[
+          IconButton(
+            icon: const Icon(Icons.camera_alt_outlined, color: Colors.black),
+            onPressed: () => _showDialog(context),
           )
         ],
+      ),
+      body: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Column(children: <Widget>[
+          _capa(model),
+          const SizedBox(height: avatarCapa / 2 + 6),
+          ValueListenableBuilder<int>(
+            valueListenable: MomentsService.instance.versao,
+            builder: (BuildContext context, int _, Widget? __) {
+              final List<MomentPost> posts = MomentsService.instance.listar();
+              if (posts.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(
+                      vertical: 60.0, horizontal: 30.0),
+                  child: Text(
+                    'Nenhum momento por aqui.\nOs momentos somem depois de 24 horas.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: mainTextColor),
+                  ),
+                );
+              }
+              return ListView.builder(
+                  itemBuilder: (context, index) => ItemDynamic(posts[index],
+                      key: ValueKey(posts[index].id)),
+                  itemCount: posts.length,
+                  physics: const NeverScrollableScrollPhysics(),
+                  shrinkWrap: true,
+                  primary: false);
+            },
+          ),
+          const SizedBox(height: 30),
+        ]),
       ),
     );
   }
