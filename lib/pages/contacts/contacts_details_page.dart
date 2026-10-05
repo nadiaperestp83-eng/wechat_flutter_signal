@@ -1,6 +1,7 @@
 import 'dart:developer';
 
 import 'package:flutter/material.dart';
+import 'package:wechat_flutter/ui/view/perfil_foto.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
@@ -97,14 +98,36 @@ class _ContactsDetailsPageState extends State<ContactsDetailsPage> {
 
   Widget _avatarGrande() {
     const double tamanho = 110.0;
-    if (_avatar.trim().isEmpty) return _iniciaisAvatar(tamanho);
+    // Foto legada (URL pública) ou, se não houver, as iniciais.
+    final bool temUrlLegada =
+        _avatar.trim().isNotEmpty && !_avatar.startsWith('perfil:');
+    final Widget alternativa = temUrlLegada
+        ? ClipOval(
+            child: Image.network(
+              _avatar,
+              width: tamanho,
+              height: tamanho,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _iniciaisAvatar(tamanho),
+            ),
+          )
+        : _iniciaisAvatar(tamanho);
+
+    final String? id = widget.id;
+    if (id == null || id.isEmpty) return alternativa;
+
+    // Foto de perfil cifrada: decifra com a Profile Key deste contato.
     return ClipOval(
-      child: Image.network(
-        _avatar,
+      child: SizedBox(
         width: tamanho,
         height: tamanho,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _iniciaisAvatar(tamanho),
+        child: PerfilFoto(
+          userId: id,
+          width: tamanho,
+          height: tamanho,
+          fit: BoxFit.cover,
+          placeholder: (_) => alternativa,
+        ),
       ),
     );
   }
