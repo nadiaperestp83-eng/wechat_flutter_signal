@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wechat_flutter/config/provider_config.dart';
 import 'package:wechat_flutter/provider/global_model.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
+import 'package:wechat_flutter/core/presence_service.dart';
 import 'package:wechat_flutter/core/push_service.dart';
 import 'package:wechat_flutter/core/signal_core.dart';
 
@@ -261,6 +262,7 @@ class ImLoginManager {
   static Future<void> loginOut(BuildContext context) async {
     final model = Provider.of<GlobalModel>(context, listen: false);
     await PushService.instance.parar(); // precisa ser antes do signOut
+    await PresenceService.instance.parar(); // grava o "visto por último"
     await SignalCore().encerrarCasulo();
     await _supabase.auth.signOut();
     model.goToLogin = true;
