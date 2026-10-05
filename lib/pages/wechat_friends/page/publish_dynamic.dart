@@ -1,19 +1,22 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-//import 'package:multi_image_picker/multi_image_picker.dart';
-
+import 'package:image_picker/image_picker.dart';
+import 'package:wechat_flutter/core/moments_service.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 
 import '../chat_style.dart';
-import '../ui/asset_view.dart';
 
+/// Publicar um Momento: texto e até 9 fotos.
+/// O post é cifrado no aparelho e entregue só a quem está conectado agora;
+/// nada fica gravado no servidor e tudo some em 24 horas.
 class PublishDynamicPage extends StatefulWidget {
-  final List<dynamic> images;
+  final List<Uint8List> images;
   final int maxImages;
 
   const PublishDynamicPage(
-      {Key? key, this.images = const [], this.maxImages = 9})
+      {Key? key, this.images = const <Uint8List>[], this.maxImages = 9})
       : super(key: key);
 
   @override
@@ -21,16 +24,91 @@ class PublishDynamicPage extends StatefulWidget {
 }
 
 class _PublishDynamicPageState extends State<PublishDynamicPage> {
-  late int imageNum;
+  late List<Uint8List> _imagens;
+  final TextEditingController _texto = TextEditingController();
+  bool _enviando = false;
 
   @override
   void initState() {
     super.initState();
-    imageNum = widget.images.length;
+    _imagens = List<Uint8List>.from(widget.images);
+  }
+
+  @override
+  void dispose() {
+    _texto.dispose();
+    super.dispose();
+  }
+
+  int get _total =>
+      _imagens.fold<int>(0, (int s, Uint8List b) => s + b.length);
+
+  Future<void> _adicionar() async {
+    final int faltam = widget.maxImages - _imagens.length;
+    if (faltam <= 0) return;
+    try {
+      final List<XFile>? fotos = await ImagePicker().pickMultiImage(
+        maxWidth: 1080,
+        maxHeight: 1080,
+        imageQuality: 50,
+      );
+      if (fotos == null || fotos.isEmpty) return;
+      final List<Uint8List> novas = <Uint8List>[];
+      for (final XFile f in fotos.take(faltam)) {
+        novas.add(await f.readAsBytes());
+      }
+      if (mounted) setState(() => _imagens.addAll(novas));
+    } catch (e) {
+      showToast('Não foi possível abrir a galeria: $e');
+    }
+  }
+
+  Future<void> _publicar() async {
+    if (_enviando) return;
+    if (_texto.text.trim().isEmpty && _imagens.isEmpty) {
+      showToast('Escreva algo ou escolha uma foto');
+      return;
+    }
+    if (_total > MomentsService.maxBytesTotal) {
+      showToast('As fotos estão pesadas demais. Remova algumas.');
+      return;
+    }
+    setState(() => _enviando = true);
+    try {
+      await MomentsService.instance
+          .publicar(texto: _texto.text, imagens: _imagens);
+      showToast('Momento publicado. Ele some em 24 horas.');
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      showToast('Não foi possível publicar: $e');
+      if (mounted) setState(() => _enviando = false);
+    }
+  }
+
+  Widget _miniatura(int indice) {
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        Image.memory(_imagens[indice], fit: BoxFit.cover),
+        Positioned(
+          top: 0,
+          right: 0,
+          child: GestureDetector(
+            onTap: () => setState(() => _imagens.removeAt(indice)),
+            child: Container(
+              color: Colors.black54,
+              child: const Icon(Icons.close, color: Colors.white, size: 18),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final bool podeAdicionar = _imagens.length < widget.maxImages;
+
     return Scaffold(
       backgroundColor: Colors.grey[200],
       appBar: AppBar(
@@ -39,12 +117,16 @@ class _PublishDynamicPageState extends State<PublishDynamicPage> {
           Container(
             padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 10),
             child: ElevatedButton(
-                onPressed: () {
-                  /// TODO
-                  Navigator.of(context).pop();
-                },
-                child: const Text('发表', style: TextStyle(color: Colors.white)),
-                style: ElevatedButton.styleFrom()), //primary: Colors.green
+                onPressed: _enviando ? null : _publicar,
+                child: _enviando
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Text('Publicar',
+                        style: TextStyle(color: Colors.white)),
+                style: ElevatedButton.styleFrom()),
           )
         ],
       ),
@@ -53,138 +135,60 @@ class _PublishDynamicPageState extends State<PublishDynamicPage> {
         child: Column(
           children: <Widget>[
             Container(
+              color: Colors.white,
               padding: const EdgeInsets.all(10.0),
-              height: 100,
-              child: Form(onWillPop: _onBackPressed, child: const TextField()),
+              height: 120,
+              child: TextField(
+                controller: _texto,
+                maxLines: null,
+                expands: true,
+                textAlignVertical: TextAlignVertical.top,
+                decoration: const InputDecoration(
+                  hintText: 'O que você está pensando?',
+                  border: InputBorder.none,
+                ),
+              ),
             ),
             const Line(color: Colors.grey),
-            GridView.builder(
-                padding: const EdgeInsets.all(10.0),
-                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent:
-                        (MediaQuery.of(context).size.width - 20) / 3,
-                    crossAxisSpacing: 5.0,
-                    mainAxisSpacing: 5.0,
-                    childAspectRatio: 1.0),
-                itemBuilder: (context, index) => AssetView(
-                      asset: null,
-                      onTap: () {
-                        if (imageNum < widget.maxImages && index == imageNum) {
-                          loadAssets();
-                        }
-
-                        /// TODO 进入预览界面
-                      },
-                    ),
-                itemCount:
-                    imageNum < widget.maxImages ? imageNum + 1 : imageNum,
-                physics: const NeverScrollableScrollPhysics(),
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.all(10.0),
+              child: GridView.builder(
                 shrinkWrap: true,
-                primary: false),
-            const Line(color: Colors.grey, margin: EdgeInsets.all(0)),
-            ListTile(
-                leading: const Icon(Icons.location_on),
-                title: const Text('所在位置'),
-                trailing: const Icon(Icons.keyboard_arrow_right),
-                onTap: () {}),
-            const Line(color: Colors.grey, margin: EdgeInsets.all(0)),
-            ListTile(
-                leading: const Icon(Icons.remove_red_eye),
-                title: const Text('谁可以看'),
-                trailing: const Icon(Icons.keyboard_arrow_right),
-                onTap: () {}),
-            const Line(color: Colors.grey, margin: EdgeInsets.all(0)),
-            ListTile(
-                leading: const Icon(Icons.attachment),
-                title: const Text('提醒谁看'),
-                trailing: const Icon(Icons.keyboard_arrow_right),
-                onTap: () {}),
-            const Line(color: Colors.grey, margin: EdgeInsets.all(0)),
+                primary: false,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _imagens.length + (podeAdicionar ? 1 : 0),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 4.0,
+                    mainAxisSpacing: 4.0),
+                itemBuilder: (BuildContext context, int i) {
+                  if (i == _imagens.length) {
+                    return GestureDetector(
+                      onTap: _adicionar,
+                      child: Container(
+                        color: Colors.grey[200],
+                        child:
+                            const Icon(Icons.add, size: 36, color: Colors.grey),
+                      ),
+                    );
+                  }
+                  return _miniatura(i);
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                'Seu momento é criptografado neste aparelho e enviado só para '
+                'os contatos conectados agora. Nada fica guardado no servidor '
+                'e ele some em 24 horas.',
+                style: TextStyles.textGrey14,
+              ),
+            ),
           ],
         ),
       ),
     );
-  }
-
-  Future<void> loadAssets() async {
-    // List<Asset> resultList = List<Asset>();
-    //
-    // try {
-    //   resultList = await MultiImagePicker.pickImages(
-    //     maxImages: widget.maxImages,
-    //     enableCamera: false,
-    //     selectedAssets: _images,
-    //     materialOptions: MaterialOptions(
-    //       actionBarColor: "#ff00a5",
-    //       actionBarTitle: "Flutter App",
-    //       actionBarTitleColor: "#ffffffff",
-    //       allViewTitle: "All Photos",
-    //       useDetailsView: true,
-    //       lightStatusBar: false,
-    //       selectCircleStrokeColor: "#ff11ab",
-    //       statusBarColor: '#ff00a5',
-    //       startInAllView: true,
-    //       selectionLimitReachedText: "You can't select any more.",
-    //     ),
-    //     cupertinoOptions: CupertinoOptions(
-    //       selectionFillColor: "#ff11ab",
-    //       selectionTextColor: "#ff00a5",
-    //       selectionCharacter: "✓",
-    //     ),
-    //   );
-    //
-    //   for (var r in resultList) {
-    //     var t = await r.filePath;
-    //     print(t);
-    //   }
-    // } on PlatformException catch (e) {
-    //   debugPrint(e.message.toString());
-    // } on NoImagesSelectedException catch (e) {
-    //   debugPrint(e.message.toString());
-    // } on PermissionDeniedException catch (e) {
-    //   debugPrint(e.message.toString());
-    // } on PermissionPermanentlyDeniedExeption catch (e) {
-    //   debugPrint(e.message.toString());
-    // } on Exception catch (e) {
-    //   debugPrint(e.toString());
-    // }
-    //
-    // // If the widget was removed from the tree while the asynchronous platform
-    // // message was in flight, we want to discard the reply rather than calling
-    // // setState to update our non-existent appearance.
-    // if (!mounted) return;
-    //
-    // setState(() {
-    //   _images = resultList;
-    //   imageNum = _images.length;
-    //   debugPrint(_images.toString());
-    // });
-  }
-
-  Future<bool> _onBackPressed() {
-    return showDialog(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: Text('保留此次编辑？', style: TextStyles.textBlue16),
-            titlePadding: const EdgeInsets.all(20),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  Navigator.pop(context, false);
-                },
-                child: Text('不保留', style: TextStyles.textGrey14),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  Navigator.pop(context, true);
-                },
-                child: Text('保留', style: TextStyles.textRed14),
-              ),
-            ],
-          );
-        }).then((value) => value is bool ? value : false);
   }
 }
