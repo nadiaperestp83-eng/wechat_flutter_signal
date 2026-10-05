@@ -45,7 +45,11 @@ V2TimConversation _mapaParaV2TimConversation(Map<String, dynamic> c) {
     userID: c['userID'] as String?,
     groupID: c['groupID'] as String?,
     showName: c['showName'] as String? ?? c['userID'] as String?,
-    faceUrl: c['faceUrl'] as String?,
+    // Conversa direta: foto de perfil cifrada do contato (decifrada no ImageView).
+    faceUrl: (c['faceUrl'] as String?) ??
+        ((c['groupID'] == null && c['userID'] != null)
+            ? 'perfil:${c['userID']}'
+            : null),
     unreadCount: c['unreadCount'] as int?,
     orderkey: c['orderkey'] as int?,
     lastMessage: ultimaMensagemMapa != null
