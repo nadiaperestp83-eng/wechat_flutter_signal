@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
+import 'package:wechat_flutter/ui/view/perfil_foto.dart';
 
 class ImageView extends StatelessWidget {
   final String img;
@@ -20,7 +21,15 @@ class ImageView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget image;
-    if (GetUtils.isURL(img)) {
+    if (img.startsWith(kPrefixoPerfil)) {
+      // Foto de perfil cifrada (Profile Key): decifra no aparelho.
+      image = PerfilFoto(
+        userId: img.substring(kPrefixoPerfil.length),
+        width: width,
+        height: height,
+        fit: fit ?? BoxFit.cover,
+      );
+    } else if (GetUtils.isURL(img)) {
       image = CachedNetworkImage(
         imageUrl: img,
         width: width,
