@@ -72,6 +72,7 @@ Future<List<V2TimFriendInfo>> getContactsFriends(String userName) async {
             userProfile: V2TimUserFullInfo(
               userID: c['phone'] as String,
               nickName: (c['name'] as String?) ?? (c['phone'] as String),
+              faceUrl: 'perfil:${c['phone']}',
             ),
           ))
       .toList();
