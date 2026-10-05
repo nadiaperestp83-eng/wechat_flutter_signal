@@ -12,10 +12,15 @@ Future<List<V2TimUserFullInfo>> getUsersProfile(List<String> users) async {
   for (final userID in users) {
     if (meuNumero != null && userID == meuNumero) {
       final perfil = SignalLocalStore.getSelfProfile(meuNumero);
+      // Foto cifrada (Profile Key) tem prioridade; URL antiga só como legado.
+      final String? caminhoFoto = perfil?['avatarPath'] as String?;
+      final String? faceUrl = (caminhoFoto != null && caminhoFoto.isNotEmpty)
+          ? 'perfil:$meuNumero'
+          : perfil?['avatarUrl'] as String?;
       resultado.add(V2TimUserFullInfo(
         userID: meuNumero,
         nickName: perfil?['name'] as String? ?? meuNumero,
-        faceUrl: perfil?['avatarUrl'] as String?,
+        faceUrl: faceUrl,
         selfSignature: perfil?['about'] as String?,
       ));
       continue;
@@ -26,6 +31,8 @@ Future<List<V2TimUserFullInfo>> getUsersProfile(List<String> users) async {
     resultado.add(V2TimUserFullInfo(
       userID: userID,
       nickName: match.isNotEmpty ? (match.first['name'] as String? ?? userID) : userID,
+      // Foto cifrada: o ImageView decifra com a Profile Key do contato.
+      faceUrl: 'perfil:$userID',
     ));
   }
 
@@ -37,20 +44,27 @@ Future<bool> setUsersProfileMethod(BuildContext context,
   final String? meuNumero = await SharedUtil.instance.getString(Keys.account);
   if (meuNumero == null) return false;
 
+  // 'perfil:...' é só um marcador interno da foto cifrada: nunca pode ir
+  // parar na coluna avatar_url (que é uma URL pública, de legado).
+  final String? avatarLegado =
+      (avatarStr != null && avatarStr.isNotEmpty && !avatarStr.startsWith('perfil:'))
+          ? avatarStr
+          : null;
+
   try {
     final supabase = Supabase.instance.client;
 
     await supabase.from('signal_accounts').upsert({
       'phone': meuNumero,
       if (nickNameStr != null) 'display_name': nickNameStr,
-      if (avatarStr != null) 'avatar_url': avatarStr,
+      if (avatarLegado != null) 'avatar_url': avatarLegado,
       'updated_at': DateTime.now().toIso8601String(),
     });
 
     final perfilAtual =
         SignalLocalStore.getSelfProfile(meuNumero) ?? <String, dynamic>{};
     if (nickNameStr != null) perfilAtual['name'] = nickNameStr;
-    if (avatarStr != null) perfilAtual['avatarUrl'] = avatarStr;
+    if (avatarLegado != null) perfilAtual['avatarUrl'] = avatarLegado;
     await SignalLocalStore.saveSelfProfile(meuNumero, perfilAtual);
 
     return true;
