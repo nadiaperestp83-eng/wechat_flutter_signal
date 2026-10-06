@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:tencent_cloud_chat_sdk/models/v2_tim_message.dart';
 import 'package:wechat_flutter/im/model/chat_data.dart';
+import 'package:wechat_flutter/im/nome_contato.dart';
 import 'package:wechat_flutter/im/send_handle.dart';
 import 'package:wechat_flutter/pages/chat/chat_more_page.dart';
 import 'package:wechat_flutter/pages/group/group_details_page.dart';
@@ -13,6 +14,7 @@ import 'package:wechat_flutter/ui/chat/emoji_panel.dart';
 import 'package:wechat_flutter/ui/edit/text_span_builder.dart';
 import 'package:wechat_flutter/ui/item/chat_more_icon.dart';
 import 'package:wechat_flutter/ui/view/indicator_page_view.dart';
+import 'package:wechat_flutter/ui/view/presence_text.dart';
 
 import '../../tools/event/im_event.dart';
 import 'chat_info_page.dart';
@@ -55,6 +57,12 @@ class _ChatPageState extends State<ChatPage> {
     if (widget.type == 2) {
       Notice.addListener(WeChatActions.groupName(), (v) {
         setState(() => newGroupName = v as String);
+      });
+    }
+    // Conversa direta: se ainda não sei o nome da pessoa, busco no perfil dela.
+    if (widget.type != 2) {
+      NomeContato.buscar(<String>[widget.id]).then((bool novo) {
+        if (novo && mounted) setState(() {});
       });
     }
     _focusNode.addListener(() {
@@ -177,6 +185,60 @@ class _ChatPageState extends State<ChatPage> {
       maxLines: 99,
       cursorColor: const Color(AppColors.ChatBoxCursorColor),
       style: AppStyles.ChatBoxTextStyle,
+    );
+  }
+
+  /// Nome mostrado no topo: grupo = nome do grupo; conversa direta = apelido
+  /// do contato, ou o nome do perfil dele, ou (por último) o e-mail.
+  String get _nomeDoChat {
+    if (widget.type == 2) {
+      return newGroupName.isNotEmpty ? newGroupName : widget.title;
+    }
+    final String nome = NomeContato.nome(widget.id);
+    if (nome != widget.id) return nome;
+    if (widget.title.isNotEmpty && widget.title != widget.id) {
+      return widget.title;
+    }
+    return nome;
+  }
+
+  /// Topo do chat: nome e, nas conversas diretas, "online" ou "visto por
+  /// último hoje às 14:05" logo abaixo.
+  Widget _tituloDoChat() {
+    final Text nome = Text(
+      _nomeDoChat,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        color: Colors.black,
+        fontSize: 17.0,
+        fontWeight: FontWeight.w600,
+        height: 1.15,
+      ),
+    );
+
+    if (widget.type == 2) return nome;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        nome,
+        // Uma linha só; se o texto for longo, termina com "…".
+        DefaultTextStyle.merge(
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          child: PresenceText(
+            userId: widget.id,
+            textAlign: TextAlign.start,
+            style: const TextStyle(
+              fontSize: 12.0,
+              height: 1.15,
+              color: Colors.black54,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -322,8 +384,7 @@ class _ChatPageState extends State<ChatPage> {
       // O corpo encolhe com o teclado: a caixa de texto e a barra inferior
       // sobem juntas e ficam coladas no teclado / no painel de emojis.
       resizeToAvoidBottomInset: true,
-      appBar: ComMomBar(
-          title: newGroupName ?? widget.title, rightDMActions: rWidget),
+      appBar: ComMomBar(titleW: _tituloDoChat(), rightDMActions: rWidget),
       body: MainInputBody(
         onTap: () => setState(
           () {
