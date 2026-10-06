@@ -1,10 +1,12 @@
 import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wechat_flutter/config/const.dart';
 import 'package:wechat_flutter/config/provider_config.dart';
+import 'package:wechat_flutter/core/call_service.dart';
 import 'package:wechat_flutter/app.dart';
 import 'package:wechat_flutter/tools/data/data.dart';
 import 'package:wechat_flutter/im/local_store.dart';
@@ -31,6 +33,8 @@ void main() async {
   /// Firebase só pro push (FCM). Se falhar, o app continua sem notificações.
   try {
     await Firebase.initializeApp();
+    // Chamada recebida com o app fechado: o push mostra a tela cheia.
+    FirebaseMessaging.onBackgroundMessage(chamadasFirebaseBackground);
   } catch (e) {
     debugPrint('Firebase indisponível (sem push): $e');
   }
