@@ -4,9 +4,19 @@ import 'package:tencent_cloud_chat_sdk/models/v2_tim_message.dart';
 import 'package:tencent_cloud_chat_sdk/models/v2_tim_text_elem.dart';
 
 import 'local_store.dart';
+import 'nome_contato.dart';
 
 Future<List<V2TimConversation?>?> getConversationsListData() async {
   final salvas = SignalLocalStore.getConversations();
+
+  // Conversas diretas mostram o apelido/nome da pessoa, não o e-mail.
+  try {
+    await NomeContato.buscar(salvas
+            .where((c) => c['groupID'] == null && c['userID'] is String)
+            .map((c) => c['userID'] as String))
+        .timeout(const Duration(seconds: 2));
+  } catch (_) {}
+
   return salvas.map(_mapaParaV2TimConversation).toList();
 }
 
@@ -44,7 +54,9 @@ V2TimConversation _mapaParaV2TimConversation(Map<String, dynamic> c) {
     type: c['type'] as int?,
     userID: c['userID'] as String?,
     groupID: c['groupID'] as String?,
-    showName: c['showName'] as String? ?? c['userID'] as String?,
+    showName: (c['groupID'] == null && c['userID'] is String)
+        ? NomeContato.nome(c['userID'] as String)
+        : (c['showName'] as String? ?? c['userID'] as String?),
     // Conversa direta: foto de perfil cifrada do contato (decifrada no ImageView).
     faceUrl: (c['faceUrl'] as String?) ??
         ((c['groupID'] == null && c['userID'] != null)
