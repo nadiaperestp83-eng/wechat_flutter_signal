@@ -19,6 +19,18 @@ class Contact {
   final String identifier;
 }
 
+/// Letra do índice A-Z. Nomes vazios ou que não começam por letra vão para '#'.
+String _inicial(String nome) {
+  try {
+    final String pinyin = PinyinHelper.getFirstWordPinyin(nome);
+    if (pinyin.isNotEmpty) {
+      final String letra = pinyin[0].toUpperCase();
+      if (RegExp(r'^[A-Z]$').hasMatch(letra)) return letra;
+    }
+  } catch (_) {}
+  return '#';
+}
+
 class ContactsPageData {
   Future<bool> contactIsNull() async {
     final String? user = await SharedUtil.instance.getString(Keys.account);
@@ -43,12 +55,15 @@ class ContactsPageData {
       identifier = model.userID;
       remark = await getRemarkMethod(model.userID);
       nickName = model.userProfile?.nickName ?? model.userID;
+      final String nomeFinal = (remark?.isNotEmpty ?? false)
+          ? remark!
+          : (nickName.trim().isNotEmpty ? nickName.trim() : identifier);
       contacts.insert(
         0,
         Contact(
           avatar: avatar,
-          name: remark?.isNotEmpty ?? false ? remark! : nickName,
-          nameIndex: PinyinHelper.getFirstWordPinyin(nickName)[0].toUpperCase(),
+          name: nomeFinal,
+          nameIndex: _inicial(nomeFinal),
           identifier: identifier,
         ),
       );
