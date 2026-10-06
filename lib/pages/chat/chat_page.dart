@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:tencent_cloud_chat_sdk/models/v2_tim_message.dart';
 import 'package:wechat_flutter/im/model/chat_data.dart';
+import 'package:wechat_flutter/core/call_service.dart';
 import 'package:wechat_flutter/im/nome_contato.dart';
 import 'package:wechat_flutter/im/send_handle.dart';
 import 'package:wechat_flutter/pages/chat/chat_more_page.dart';
@@ -202,8 +203,8 @@ class _ChatPageState extends State<ChatPage> {
     return nome;
   }
 
-  /// Topo do chat: nome e, nas conversas diretas, "online" ou "visto por
-  /// último hoje às 14:05" logo abaixo.
+  /// Topo do chat, como no WhatsApp: foto, nome e (nas conversas diretas)
+  /// "online" ou "visto por último hoje às 14:05" logo abaixo.
   Widget _tituloDoChat() {
     final Text nome = Text(
       _nomeDoChat,
@@ -217,42 +218,63 @@ class _ChatPageState extends State<ChatPage> {
       ),
     );
 
-    if (widget.type == 2) return nome;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        nome,
-        // Uma linha só; se o texto for longo, termina com "…".
-        DefaultTextStyle.merge(
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          child: PresenceText(
-            userId: widget.id,
-            textAlign: TextAlign.start,
-            style: const TextStyle(
-              fontSize: 12.0,
-              height: 1.15,
-              color: Colors.black54,
+    final Widget foto = ClipOval(
+      child: widget.type == 2
+          ? Container(
+              width: 38.0,
+              height: 38.0,
+              color: Colors.black12,
+              child: const Icon(Icons.group, color: Colors.black45),
+            )
+          : ImageView(
+              img: 'perfil:${widget.id}',
+              width: 38.0,
+              height: 38.0,
+              fit: BoxFit.cover,
+              isRadius: false,
             ),
-          ),
-        ),
+    );
+
+    final Widget textos = widget.type == 2
+        ? nome
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              nome,
+              // Uma linha só; se o texto for longo, termina com "…".
+              DefaultTextStyle.merge(
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                child: PresenceText(
+                  userId: widget.id,
+                  textAlign: TextAlign.start,
+                  style: const TextStyle(
+                    fontSize: 12.0,
+                    height: 1.15,
+                    color: Colors.black54,
+                  ),
+                ),
+              ),
+            ],
+          );
+
+    return Row(
+      children: <Widget>[
+        foto,
+        const SizedBox(width: 10.0),
+        Expanded(child: textos),
       ],
     );
   }
 
-  /// Aviso temporário enquanto as chamadas não estão implementadas.
-  void _avisoEmBreve(String recurso) {
-    final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(context);
-    messenger?.hideCurrentSnackBar();
-    messenger?.showSnackBar(
-      SnackBar(
-        content: Text('$recurso: em breve'),
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+  /// Chamada de voz/vídeo (Agora). Só em conversas diretas.
+  void _ligar({required bool video}) {
+    if (widget.type == 2) {
+      showToast('Chamadas em grupo ainda não estão disponíveis');
+      return;
+    }
+    CallService.instance.ligar(widget.id, video: video);
   }
 
   /// Ícone de ação da barra superior (PNG dos assets, tingido de preto).
@@ -359,12 +381,12 @@ class _ChatPageState extends State<ChatPage> {
       _acaoBarra(
         asset: 'assets/images/contact/ic_video.png',
         dica: 'Chamada de vídeo',
-        onTap: () => _avisoEmBreve('Chamada de vídeo'),
+        onTap: () => _ligar(video: true),
       ),
       _acaoBarra(
         asset: 'assets/images/contact/ic_voice.png',
         dica: 'Chamada de voz',
-        onTap: () => _avisoEmBreve('Chamada de voz'),
+        onTap: () => _ligar(video: false),
       ),
       _acaoBarra(
         asset: 'assets/images/right_more.png',
