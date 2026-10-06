@@ -28,23 +28,38 @@ class _ContactsPageState extends State<ContactsPage>
   final List<ContactItem> _functionButtons = <ContactItem>[
     ContactItem(avatar: '${contactAssets}ic_new_friend.webp', title: '新的朋友'),
     ContactItem(avatar: '${contactAssets}ic_group.webp', title: '群聊'),
-    ContactItem(avatar: '${contactAssets}ic_tag.webp', title: '标签'),
-    ContactItem(avatar: '${contactAssets}ic_no_public.webp', title: '公众号'),
+    // Etiquetas (标签) e Contas oficiais (公众号) ocultas.
   ];
   final Map<String, double> _letterPosMap = <String, double>{
     INDEX_BAR_WORDS[0]: 0.0
   };
 
-  Future<void> getContacts() async {
-    final List<Contact> str = await ContactsPageData().listFriend();
-    isNull = await ContactsPageData().contactIsNull();
+  /// A letra '#' fica no fim da lista, como no WeChat.
+  int _comparar(Contact a, Contact b) {
+    if (a.nameIndex != b.nameIndex) {
+      if (a.nameIndex == '#') return 1;
+      if (b.nameIndex == '#') return -1;
+      return a.nameIndex.compareTo(b.nameIndex);
+    }
+    return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+  }
 
-    final List<Contact> listContact = str;
+  Future<void> getContacts() async {
+    List<Contact> listContact = <Contact>[];
+    try {
+      listContact = await ContactsPageData().listFriend();
+      isNull = await ContactsPageData().contactIsNull();
+    } catch (e) {
+      debugPrint('[Contatos] erro ao carregar: $e');
+    }
+
     _contacts.clear();
     _contacts.addAll(listContact);
-    _contacts
-        .sort((Contact a, Contact b) => a.nameIndex.compareTo(b.nameIndex));
-    sC = ScrollController();
+    _contacts.sort(_comparar);
+    sC ??= ScrollController();
+    _letterPosMap
+      ..clear()
+      ..[INDEX_BAR_WORDS[0]] = 0.0;
 
     /// 计算用于 IndexBar 进行定位的关键通讯录列表项的位置
     double totalPos =
