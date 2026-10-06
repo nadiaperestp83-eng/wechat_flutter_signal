@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:wechat_flutter/core/call_service.dart';
 import 'package:wechat_flutter/core/signal_core.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 
@@ -17,6 +18,7 @@ class PushService with WidgetsBindingObserver {
   bool _observando = false;
   String? _token;
   StreamSubscription<String>? _subTroca;
+  StreamSubscription<RemoteMessage>? _subMensagem;
 
   SupabaseClient get _supabase => Supabase.instance.client;
 
@@ -36,6 +38,12 @@ class PushService with WidgetsBindingObserver {
           _supabase.auth.currentSession != null) {
         await SignalCore().inicializarCasulo(meuUserId: conta);
       }
+      // Chamadas de voz/vídeo: escuta convites (Broadcast + tela cheia).
+      if (conta != null &&
+          conta.isNotEmpty &&
+          _supabase.auth.currentSession != null) {
+        await CallService.instance.iniciar(conta);
+      }
     } catch (e) {
       print('Erro ao iniciar o SignalCore: $e');
     }
@@ -51,6 +59,10 @@ class PushService with WidgetsBindingObserver {
       final String? token = await fm.getToken();
       if (token != null) await _salvarToken(token);
       _subTroca ??= fm.onTokenRefresh.listen(_salvarToken);
+      // Push de chamada com o app aberto (com o app fechado, quem trata é o
+      // chamadasFirebaseBackground, registrado no main.dart).
+      _subMensagem ??=
+          FirebaseMessaging.onMessage.listen(CallService.instance.aoReceberPush);
     } catch (e) {
       print('Push indisponível: $e');
     }
@@ -73,6 +85,9 @@ class PushService with WidgetsBindingObserver {
     _token = null;
     await _subTroca?.cancel();
     _subTroca = null;
+    await _subMensagem?.cancel();
+    _subMensagem = null;
+    await CallService.instance.parar();
     try {
       if (token != null) {
         await _supabase.rpc('unregister_push_token',
