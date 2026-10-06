@@ -30,3 +30,6 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // Adicione códigos de canais nativos aqui se precisar no futuro
+    }
+}
