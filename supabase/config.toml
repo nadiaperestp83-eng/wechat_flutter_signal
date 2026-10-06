@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.send-push]
 verify_jwt = false
+
+[functions.agora-token]
+verify_jwt = true
+
+[functions.call-push]
+verify_jwt = true
