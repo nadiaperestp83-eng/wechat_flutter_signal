@@ -4,8 +4,6 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
@@ -13,6 +11,7 @@ import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:get/get.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:wechat_flutter/config/agora_config.dart';
 import 'package:wechat_flutter/core/media_crypto.dart';
 import 'package:wechat_flutter/core/signal_core.dart';
 import 'package:wechat_flutter/im/nome_contato.dart';
@@ -55,24 +54,15 @@ class _Sessao {
   });
 }
 
-/// Push FCM de chamada com o app fechado (roda em outro isolate).
-/// Só mostra a tela cheia de chamada; NADA é decifrado aqui.
-@pragma('vm:entry-point')
-Future<void> chamadasFirebaseBackground(RemoteMessage mensagem) async {
-  try {
-    await Firebase.initializeApp();
-  } catch (_) {}
-  await CallService.tratarPushEmSegundoPlano(mensagem.data);
-}
-
 /// Chamadas de voz e vídeo (Agora) com mídia cifrada ponta a ponta.
 ///
-///  - Sinalização: Supabase Realtime Broadcast em `calls:<email>` (volátil) e,
-///    para acordar o app fechado, um push FCM só de dados (função call-push).
-///  - O convite (canal + chave de mídia) viaja cifrado na sessão Signal.
-///  - A mídia usa a criptografia do Agora (AES-256-GCM) com essa chave: o
-///    servidor do Agora só vê tráfego cifrado.
+///  - O convite (canal + chave de mídia) viaja cifrado na sessão Signal, pela
+///    mesma caixa de mensagens do chat (já apagada do servidor após a leitura).
+///  - Os avisos durante a chamada (atendeu, recusou, desligou) vão por
+///    Supabase Realtime Broadcast em `calls:<email>` (volátil).
+///  - A mídia usa a criptografia do Agora (AES-256-GCM) com a chave do convite.
 ///  - Nada de chamada é gravado: nem áudio, nem vídeo, nem histórico.
+///  - Sem Edge Function e sem token: o projeto do Agora usa só o App ID.
 class CallService {
   CallService._();
   static final CallService instance = CallService._();
@@ -134,9 +124,6 @@ class CallService {
     try {
       await FlutterCallkitIncoming.requestFullIntentPermission();
     } catch (_) {}
-
-    // App aberto pelo botão "Atender" da tela cheia (estava fechado).
-    unawaited(_retomarChamadaAceita());
   }
 
   Future<void> parar() async {
@@ -211,6 +198,10 @@ class CallService {
       showToast('Você já está em uma chamada');
       return;
     }
+    if (kAgoraAppId.isEmpty || kAgoraAppId.startsWith('COLE')) {
+      showToast('Configure o App ID do Agora em lib/config/agora_config.dart');
+      return;
+    }
     if (!await _permissoes(video)) {
       showToast('Permita o microfone${video ? ' e a câmera' : ''} para ligar');
       return;
@@ -240,21 +231,9 @@ class CallService {
         's': base64Encode(s.sal),
         'ts': DateTime.now().millisecondsSinceEpoch,
       });
-      // Só quem tem sessão Signal comigo consegue abrir o convite.
-      final CanalCifrado cifrado =
-          await SignalCore().cifrarParaCanal(peer, envelope);
-
-      // App aberto: chega na hora pelo Broadcast.
-      await _enviar(peer, 'invite', <String, dynamic>{
-        'from': _meuId,
-        'id': id,
-        'v': video,
-        't': cifrado.tipo,
-        'c': cifrado.payload,
-      });
-      // App fechado: o push acorda o aparelho (convite segue cifrado).
-      unawaited(_empurrar('invite', peer, id,
-          video: video, tipoSignal: cifrado.tipo, cifrado: cifrado.payload));
+      // O convite vai cifrado pela caixa de mensagens do chat: se o app da
+      // outra pessoa estiver fechado, o aviso de "Nova mensagem" dela acorda.
+      await SignalCore().enviarConviteChamada(peer, envelope);
 
       _tempoToque = Timer(_tempoParaAtender, () {
         _terminar(aviso: 'Sem resposta', enviar: 'cancel');
@@ -270,37 +249,40 @@ class CallService {
 
   // ------------------------------------------------------------- receber
 
-  /// Convite que chegou com o app aberto (Broadcast ou push em primeiro plano).
-  Future<void> _aoReceberConvite({
-    required String? from,
-    required String? id,
-    required bool video,
-    required int? tipo,
-    required String? cifrado,
-  }) async {
-    if (!_ativo ||
-        from == null ||
-        id == null ||
-        tipo == null ||
-        cifrado == null) {
-      return;
-    }
-    if (from == _meuId) return;
-    if (!_vistas.add(id)) return; // o mesmo convite chega por 2 caminhos
+  /// Convite que chegou pela caixa de mensagens (o SignalCore já decifrou).
+  Future<void> aoReceberConvite(String from, Map<String, dynamic> env) async {
+    if (!_ativo || from == _meuId) return;
+    final String? id = env['id'] as String?;
+    if (id == null || !_vistas.add(id)) return;
+
+    // Convite velho (a pessoa já desistiu ou o app ficou fechado): ignora.
+    final int ts = (env['ts'] as num?)?.toInt() ?? 0;
+    if (DateTime.now().millisecondsSinceEpoch - ts > 60000) return;
 
     if (_sessao != null || _pendentes.isNotEmpty) {
       await _ctrl(from, id, 'busy');
       return;
     }
 
+    final _Convite? convite = _lerConvite(from, id, env);
+    if (convite == null) return;
+    _pendentes[id] = convite;
+
     try {
-      // Decifrar prova quem é o remetente (convite falso não abre).
-      final String claro =
-          await SignalCore().decifrarDeCanal(from, cifrado, tipo);
-      final Map<String, dynamic> env =
-          Map<String, dynamic>.from(jsonDecode(claro) as Map);
-      if (env['t'] != 'call' || env['id'] != id) return;
-      _pendentes[id] = _Convite(
+      await NomeContato.buscar(<String>[from])
+          .timeout(const Duration(seconds: 1));
+    } catch (_) {}
+    await _mostrarToque(
+      id: id,
+      nome: NomeContato.nome(from),
+      video: convite.video,
+      extra: <String, dynamic>{'from': from},
+    );
+  }
+
+  _Convite? _lerConvite(String from, String id, Map<String, dynamic> env) {
+    try {
+      return _Convite(
         from,
         id,
         env['v'] == true,
@@ -310,69 +292,8 @@ class CallService {
       );
     } catch (e) {
       debugPrint('[Chamadas] convite inválido: $e');
-      return;
+      return null;
     }
-
-    if (await _jaToca(id)) return;
-    try {
-      await NomeContato.buscar(<String>[from])
-          .timeout(const Duration(seconds: 1));
-    } catch (_) {}
-    await _mostrarToque(
-      id: id,
-      nome: NomeContato.nome(from),
-      video: _pendentes[id]?.video ?? video,
-      extra: <String, dynamic>{'from': from},
-    );
-  }
-
-  /// Push FCM com o app em primeiro plano.
-  void aoReceberPush(RemoteMessage m) {
-    final Map<String, dynamic> d = m.data;
-    if (d['type'] == 'call') {
-      _aoReceberConvite(
-        from: d['from'] as String?,
-        id: d['id'] as String?,
-        video: d['video'] == '1',
-        tipo: int.tryParse((d['t'] as String?) ?? ''),
-        cifrado: d['c'] as String?,
-      );
-    } else if (d['type'] == 'call_cancel') {
-      _cancelouAntesDeAtender(d['id'] as String?);
-    }
-  }
-
-  /// Push FCM com o app FECHADO: só toca a tela cheia, sem decifrar nada.
-  static Future<void> tratarPushEmSegundoPlano(Map<String, dynamic> d) async {
-    final String? id = d['id'] as String?;
-    if (id == null) return;
-
-    if (d['type'] == 'call_cancel') {
-      try {
-        await FlutterCallkitIncoming.endCall(id);
-      } catch (_) {}
-      return;
-    }
-    if (d['type'] != 'call') return;
-    if (await _jaTocaEstatico(id)) return;
-
-    final String from = (d['from'] as String?) ?? '';
-    final String nomePublico = (d['name'] as String?) ?? '';
-    final String nome = nomePublico.isNotEmpty
-        ? nomePublico
-        : (from.contains('@') ? from.split('@').first : from);
-
-    await _mostrarToqueEstatico(
-      id: id,
-      nome: nome,
-      video: d['video'] == '1',
-      // O convite continua cifrado: só é aberto depois que o usuário atende.
-      extra: <String, dynamic>{
-        'from': from,
-        't': (d['t'] as String?) ?? '',
-        'c': (d['c'] as String?) ?? '',
-      },
-    );
   }
 
   Future<void> _aoReceberControle(Map<String, dynamic> m) async {
@@ -452,56 +373,13 @@ class CallService {
     return <String, dynamic>{};
   }
 
-  /// Se o app foi aberto pelo "Atender", retoma a chamada aceita.
-  Future<void> _retomarChamadaAceita() async {
-    try {
-      final dynamic ativos = await FlutterCallkitIncoming.activeCalls();
-      if (ativos is! List) return;
-      for (final dynamic c in ativos) {
-        final Map<String, dynamic> m = _mapa(c);
-        final String? id = m['id'] as String?;
-        final bool aceita = m['isAccepted'] == true || m['accepted'] == true;
-        if (id != null && aceita) {
-          await _aoAceitar(id, _mapa(m['extra']));
-        }
-      }
-    } catch (e) {
-      debugPrint('[Chamadas] activeCalls: $e');
-    }
-  }
-
   Future<void> _aoAceitar(String id, Map<String, dynamic> extra) async {
     if (!_tratadas.add('aceitar:$id')) return;
     if (_sessao != null) return;
 
     try {
-      _Convite? cv = _pendentes.remove(id);
-      if (cv == null) {
-        // Veio do push com o app fechado: abre o convite agora.
-        await _esperarSignal();
-        final String from = (extra['from'] as String?) ?? '';
-        final int? tipo = int.tryParse((extra['t'] as String?) ?? '');
-        final String? cifrado = extra['c'] as String?;
-        if (from.isEmpty || tipo == null || cifrado == null) {
-          throw StateError('convite incompleto');
-        }
-        _vistas.add(id);
-        final String claro =
-            await SignalCore().decifrarDeCanal(from, cifrado, tipo);
-        final Map<String, dynamic> env =
-            Map<String, dynamic>.from(jsonDecode(claro) as Map);
-        if (env['t'] != 'call' || env['id'] != id) {
-          throw StateError('convite inválido');
-        }
-        cv = _Convite(
-          from,
-          id,
-          env['v'] == true,
-          env['ch'] as String,
-          env['k'] as String,
-          Uint8List.fromList(base64Decode(env['s'] as String)),
-        );
-      }
+      final _Convite? cv = _pendentes.remove(id);
+      if (cv == null) throw StateError('convite não encontrado');
 
       if (!await _permissoes(cv.video)) {
         showToast('Permita o microfone${cv.video ? ' e a câmera' : ''}');
@@ -549,9 +427,7 @@ class CallService {
 
   Future<void> _entrarNoCanal(_Sessao s) async {
     s.uid = 1 + _aleatorio.nextInt(2000000000);
-    final Map<String, dynamic> credenciais = await _pedirToken(s);
-    final String appId = credenciais['appId'] as String;
-    final String token = credenciais['token'] as String;
+    const String appId = kAgoraAppId;
 
     final RtcEngine rtc = createAgoraRtcEngine();
     await rtc.initialize(RtcEngineContext(
@@ -571,9 +447,6 @@ class CallService {
         if (_sessao == s && s.conectou) {
           _terminar(aviso: 'Chamada encerrada', enviar: null);
         }
-      },
-      onTokenPrivilegeWillExpire: (RtcConnection conexao, String token) {
-        _renovarToken(s);
       },
       onError: (ErrorCodeType erro, String texto) {
         debugPrint('[Chamadas] erro Agora: $erro $texto');
@@ -602,7 +475,7 @@ class CallService {
 
     motor.value = rtc;
     await rtc.joinChannel(
-      token: token,
+      token: '',
       channelId: s.canal,
       uid: s.uid,
       options: ChannelMediaOptions(
@@ -614,27 +487,6 @@ class CallService {
         autoSubscribeVideo: s.video,
       ),
     );
-  }
-
-  Future<Map<String, dynamic>> _pedirToken(_Sessao s) async {
-    final FunctionResponse resp = await _supabase.functions.invoke(
-      'agora-token',
-      body: <String, dynamic>{'channel': s.canal, 'uid': s.uid},
-    );
-    final dynamic dados = resp.data;
-    if (dados is! Map || dados['token'] == null || dados['appId'] == null) {
-      throw StateError('token do Agora indisponível');
-    }
-    return Map<String, dynamic>.from(dados);
-  }
-
-  Future<void> _renovarToken(_Sessao s) async {
-    try {
-      final Map<String, dynamic> c = await _pedirToken(s);
-      await motor.value?.renewToken(c['token'] as String);
-    } catch (e) {
-      debugPrint('[Chamadas] não consegui renovar o token: $e');
-    }
   }
 
   void _remotoEntrou(_Sessao s, int uid) {
@@ -711,9 +563,6 @@ class CallService {
 
     if (enviar != null) {
       await _ctrl(s.peer, s.id, enviar);
-      if (enviar == 'cancel' && s.saindo) {
-        unawaited(_empurrar('cancel', s.peer, s.id));
-      }
     }
 
     final RtcEngine? rtc = motor.value;
@@ -854,33 +703,6 @@ class CallService {
       });
     } catch (e) {
       debugPrint('[Chamadas] não consegui avisar $destino ($tipo): $e');
-    }
-  }
-
-  /// Chama a função call-push (acorda o aparelho com o app fechado).
-  /// [cifrado] é o convite JÁ cifrado na sessão Signal: o servidor não lê.
-  Future<void> _empurrar(
-    String tipo,
-    String destino,
-    String id, {
-    bool video = false,
-    int? tipoSignal,
-    String? cifrado,
-  }) async {
-    try {
-      await _supabase.functions.invoke(
-        'call-push',
-        body: <String, dynamic>{
-          'kind': tipo,
-          'to': destino,
-          'id': id,
-          if (tipo == 'invite') 'video': video,
-          if (tipo == 'invite') 't': tipoSignal,
-          if (tipo == 'invite') 'c': cifrado,
-        },
-      );
-    } catch (e) {
-      debugPrint('[Chamadas] push de chamada falhou: $e');
     }
   }
 
