@@ -5,6 +5,7 @@ import 'package:hive/hive.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'package:tencent_cloud_chat_sdk/enum/message_elem_type.dart';
+import 'package:wechat_flutter/core/call_service.dart';
 import 'package:wechat_flutter/core/moments_service.dart';
 import 'package:wechat_flutter/core/profile_service.dart';
 import 'package:wechat_flutter/im/local_store.dart';
@@ -578,6 +579,12 @@ class SignalCore {
     }
   }
 
+  /// Envia o convite de uma chamada pela caixa de mensagens do chat (cifrado).
+  /// O aviso de "Nova mensagem" do destinatário acorda o app dele.
+  Future<void> enviarConviteChamada(String destino, String envelopeJson) {
+    return _serializar<void>(() => _cifrarEEnviar(destino, envelopeJson));
+  }
+
   /// Cifra [texto] na sessão com [destino] SEM gravar nada no servidor.
   /// Quem chama entrega o resultado por Realtime Broadcast.
   Future<CanalCifrado> cifrarParaCanal(String destino, String texto) {
@@ -737,6 +744,10 @@ class SignalCore {
         break;
       case 'rcpt':
         await _receberRecibo(remetente, envelope);
+        break;
+      case 'call':
+        // Convite de chamada de voz/vídeo (cifrado, pela caixa do chat).
+        await CallService.instance.aoReceberConvite(remetente, envelope);
         break;
       default:
         print('Tipo de conteúdo desconhecido: ${envelope['t']}');
