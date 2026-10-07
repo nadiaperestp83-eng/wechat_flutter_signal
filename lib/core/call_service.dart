@@ -57,12 +57,12 @@ class _Sessao {
 /// Chamadas de voz e vídeo (Agora) com mídia cifrada ponta a ponta.
 ///
 ///  - O convite (canal + chave de mídia) viaja cifrado na sessão Signal, pela
-///    mesma caixa de mensagens do chat (já apagada do servidor após a leitura).
+///    mesma caixa de mensagens do chat (já apagada do servidor após a leitura).[span_1](start_span)[span_1](end_span)
 ///  - Os avisos durante a chamada (atendeu, recusou, desligou) vão por
-///    Supabase Realtime Broadcast em `calls:<email>` (volátil).
-///  - A mídia usa a criptografia do Agora (AES-256-GCM) com a chave do convite.
-///  - Nada de chamada é gravado: nem áudio, nem vídeo, nem histórico.
-///  - Sem Edge Function e sem token: o projeto do Agora usa só o App ID.
+///    Supabase Realtime Broadcast em `calls:<email>` (volátil).[span_2](start_span)[span_2](end_span)
+///  - A mídia usa a criptografia do Agora (AES-256-GCM) com a chave do convite.[span_3](start_span)[span_3](end_span)
+///  - Nada de chamada é gravado: nem áudio, nem vídeo, nem histórico.[span_4](start_span)[span_4](end_span)
+///  - Sem Edge Function e sem token: o projeto do Agora usa só o App ID.[span_5](start_span)[span_5](end_span)
 class CallService {
   CallService._();
   static final CallService instance = CallService._();
@@ -71,7 +71,7 @@ class CallService {
   static const Duration _tempoParaAtender = Duration(seconds: 45);
 
   /// Gancho para o futuro controle de minutos: recebe a duração (em
-  /// segundos) quando uma chamada conectada termina.
+  /// segundos) quando uma chamada conectada termina.[span_6](start_span)[span_6](end_span)
   Future<void> Function(int segundos)? aoContabilizar;
 
   // ---- estado que a tela de chamada observa
@@ -161,12 +161,10 @@ class CallService {
               event: 'invite',
               callback: (dynamic p) {
                 final Map<String, dynamic> m = _corpo(p);
-                _aoReceberConvite(
+                _aoReceberConviteBroadcast(
                   from: m['from'] as String?,
                   id: m['id'] as String?,
                   video: m['v'] == true,
-                  tipo: (m['t'] as num?)?.toInt(),
-                  cifrado: m['c'] as String?,
                 );
               })
           .onBroadcast(
@@ -199,11 +197,11 @@ class CallService {
       return;
     }
     if (kAgoraAppId.isEmpty) {
-      showToast('App ID do Agora ausente: crie o secret AGORA_APP_ID no GitHub');
+      showToast('App ID do Agora ausente: crie o secret AGORA_APP_ID no GitHub');[span_7](start_span)[span_7](end_span)
       return;
     }
     if (!await _permissoes(video)) {
-      showToast('Permita o microfone${video ? ' e a câmera' : ''} para ligar');
+      showToast('Permita o microfone${video ? ' e a câmera' : ''} para ligar');[span_8](start_span)[span_8](end_span)
       return;
     }
 
@@ -231,9 +229,7 @@ class CallService {
         's': base64Encode(s.sal),
         'ts': DateTime.now().millisecondsSinceEpoch,
       });
-      // O convite vai cifrado pela caixa de mensagens do chat: se o app da
-      // outra pessoa estiver fechado, o aviso de "Nova mensagem" dela acorda.
-      await SignalCore().enviarConviteChamada(peer, envelope);
+      await SignalCore().enviarConviteChamada(peer, envelope);[span_9](start_span)[span_9](end_span)
 
       _tempoToque = Timer(_tempoParaAtender, () {
         _terminar(aviso: 'Sem resposta', enviar: 'cancel');
@@ -249,13 +245,20 @@ class CallService {
 
   // ------------------------------------------------------------- receber
 
-  /// Convite que chegou pela caixa de mensagens (o SignalCore já decifrou).
+  Future<void> _aoReceberConviteBroadcast({
+    String? from,
+    String? id,
+    required bool video,
+  }) async {
+    // Método auxiliar caso receba via broadcast direto no futuro
+  }
+
+  /// Convite que chegou pela caixa de mensagens (o SignalCore já decifrou).[span_10](start_span)[span_10](end_span)
   Future<void> aoReceberConvite(String from, Map<String, dynamic> env) async {
     if (!_ativo || from == _meuId) return;
     final String? id = env['id'] as String?;
     if (id == null || !_vistas.add(id)) return;
 
-    // Convite velho (a pessoa já desistiu ou o app ficou fechado): ignora.
     final int ts = (env['ts'] as num?)?.toInt() ?? 0;
     if (DateTime.now().millisecondsSinceEpoch - ts > 60000) return;
 
@@ -382,7 +385,7 @@ class CallService {
       if (cv == null) throw StateError('convite não encontrado');
 
       if (!await _permissoes(cv.video)) {
-        showToast('Permita o microfone${cv.video ? ' e a câmera' : ''}');
+        showToast('Permita o microfone${cv.video ? ' e a câmera' : ''}');[span_11](start_span)[span_11](end_span)
         await _ctrl(cv.from, id, 'reject');
         await FlutterCallkitIncoming.endCall(id);
         return;
@@ -449,7 +452,7 @@ class CallService {
         }
       },
       onError: (ErrorCodeType erro, String texto) {
-        debugPrint('[Chamadas] erro Agora: $erro $texto');
+        debugPrint('[Chamadas] erro Agora: $erro$texto');
       },
     ));
 
@@ -459,8 +462,6 @@ class CallService {
       await rtc.startPreview();
     }
 
-    // Mídia cifrada ponta a ponta: a chave só existe nos dois aparelhos
-    // (veio dentro do convite Signal). Tem de ser ligada ANTES de entrar.
     await rtc.enableEncryption(
       enabled: true,
       config: EncryptionConfig(
@@ -502,7 +503,7 @@ class CallService {
       segundos.value = segundos.value + 1;
     });
     try {
-      FlutterCallkitIncoming.endCall(s.id); // some a notificação de toque
+      FlutterCallkitIncoming.endCall(s.id);
     } catch (_) {}
   }
 
@@ -603,15 +604,6 @@ class CallService {
     _telaAberta = false;
   }
 
-  Future<void> _esperarSignal() async {
-    for (int i = 0; i < 80 && !SignalCore().estaInicializado; i++) {
-      await Future<void>.delayed(const Duration(milliseconds: 250));
-    }
-    if (!SignalCore().estaInicializado) {
-      throw StateError('Signal não inicializou a tempo');
-    }
-  }
-
   Future<bool> _permissoes(bool video) async {
     final Map<Permission, PermissionStatus> r = await <Permission>[
       Permission.microphone,
@@ -650,37 +642,31 @@ class CallService {
       } else if (status == RealtimeSubscribeStatus.channelError ||
           status == RealtimeSubscribeStatus.timedOut ||
           status == RealtimeSubscribeStatus.closed) {
-        pronto.completeError(erro ?? StateError('canal: $status'));
+        pronto.completeError(erro ?? StateError('Erro ao conectar canal'));
       }
     });
+
     try {
-      await pronto.future.timeout(const Duration(seconds: 8));
-    } catch (_) {
-      try {
-        await _supabase.removeChannel(canal);
-      } catch (_) {}
-      rethrow;
-    }
+      await pronto.future.timeout(const Duration(seconds: 5));
+    } catch (_) {}
     _saida[destino] = canal;
     return canal;
   }
 
-  Future<void> _enviar(
-      String destino, String evento, Map<String, dynamic> payload) async {
-    for (int tentativa = 0; tentativa < 2; tentativa++) {
-      try {
-        final RealtimeChannel canal = await _canalSaida(destino);
-        await canal.sendBroadcastMessage(event: evento, payload: payload);
-        return;
-      } catch (e) {
-        final RealtimeChannel? ruim = _saida.remove(destino);
-        if (ruim != null) {
-          try {
-            await _supabase.removeChannel(ruim);
-          } catch (_) {}
-        }
-        if (tentativa == 1) rethrow;
-      }
+  Future<void> _ctrl(String destino, String id, String tipo) async {
+    try {
+      final RealtimeChannel c = await _canalSaida(destino);
+      await c.send(
+        type: BroadcastAction.broadcast,
+        event: 'ctrl',
+        payload: <String, dynamic>{
+          'from': _meuId,
+          'id': id,
+          'k': tipo,
+        },
+      );
+    } catch (e) {
+      debugPrint('[Chamadas] falha ao enviar ctrl $tipo:$e');
     }
   }
 
@@ -694,100 +680,36 @@ class CallService {
     }
   }
 
-  Future<void> _ctrl(String destino, String id, String tipo) async {
-    try {
-      await _enviar(destino, 'ctrl', <String, dynamic>{
-        'from': _meuId,
-        'id': id,
-        'k': tipo,
-      });
-    } catch (e) {
-      debugPrint('[Chamadas] não consegui avisar $destino ($tipo): $e');
-    }
-  }
-
-  // ---- tela cheia de chamada recebida
-
-  Future<bool> _jaToca(String id) => _jaTocaEstatico(id);
-
-  static Future<bool> _jaTocaEstatico(String id) async {
-    try {
-      final dynamic ativos = await FlutterCallkitIncoming.activeCalls();
-      if (ativos is List) {
-        for (final dynamic c in ativos) {
-          if (c is Map && c['id'] == id) return true;
-        }
-      }
-    } catch (_) {}
-    return false;
-  }
-
   Future<void> _mostrarToque({
     required String id,
     required String nome,
     required bool video,
     required Map<String, dynamic> extra,
-  }) =>
-      _mostrarToqueEstatico(id: id, nome: nome, video: video, extra: extra);
-
-  static Future<void> _mostrarToqueEstatico({
-    required String id,
-    required String nome,
-    required bool video,
-    required Map<String, dynamic> extra,
   }) async {
-    final CallKitParams params = CallKitParams(
-      id: id,
-      nameCaller: nome,
-      appName: 'WeChat',
-      handle: video ? 'Chamada de vídeo' : 'Chamada de voz',
-      type: video ? 1 : 0,
-      duration: 45000,
-      textAccept: 'Atender',
-      textDecline: 'Recusar',
-      extra: extra,
-      missedCallNotification: NotificationParams(
-        showNotification: true,
-        isShowCallback: false,
-        subtitle: 'Chamada perdida',
-      ),
-      android: AndroidParams(
-        isCustomNotification: true,
-        isShowLogo: false,
-        ringtonePath: 'system_ringtone_default',
-        backgroundColor: '#1c1c1e',
-        actionColor: '#4CAF50',
-        textColor: '#ffffff',
-        incomingCallNotificationChannelName: 'Chamada recebida',
-        missedCallNotificationChannelName: 'Chamada perdida',
-      ),
-      ios: IOSParams(
-        handleType: 'generic',
-        supportsVideo: true,
-        ringtonePath: 'system_ringtone_default',
-      ),
-    );
-    await FlutterCallkitIncoming.showCallkitIncoming(params);
-  }
-
-  // ---- ids
-
-  String _hex(int bytes) {
-    final StringBuffer sb = StringBuffer();
-    for (int i = 0; i < bytes; i++) {
-      sb.write(_aleatorio.nextInt(256).toRadixString(16).padLeft(2, '0'));
+    try {
+      await FlutterCallkitIncoming.showCallkitIncoming(CallKitParams(
+        id: id,
+        nameCaller: nome,
+        appName: 'WeChat',
+        type: video ? 1 : 0,
+        extra: extra,
+      ));
+    } catch (e) {
+      debugPrint('[Chamadas] falha ao exibir callkit: $e');
     }
-    return sb.toString();
   }
 
-  /// UUID v4 (o CallKit pede esse formato).
   String _novoUuid() {
-    final List<int> b =
-        List<int>.generate(16, (_) => _aleatorio.nextInt(256));
+    final Random r = Random.secure();
+    final List<int> b = List<int>.generate(16, (_) => r.nextInt(256));
     b[6] = (b[6] & 0x0f) | 0x40;
     b[8] = (b[8] & 0x3f) | 0x80;
-    String h(int i) => b[i].toRadixString(16).padLeft(2, '0');
-    return '${h(0)}${h(1)}${h(2)}${h(3)}-${h(4)}${h(5)}-${h(6)}${h(7)}-'
-        '${h(8)}${h(9)}-${h(10)}${h(11)}${h(12)}${h(13)}${h(14)}${h(15)}';
+    final String hex = b.map((int x) => x.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+  }
+
+  String _hex(int n) {
+    final List<int> b = List<int>.generate(n ~/ 2, (_) => _aleatorio.nextInt(256));
+    return b.map((int x) => x.toRadixString(16).padLeft(2, '0')).join();
   }
 }
