@@ -198,8 +198,8 @@ class CallService {
       showToast('Você já está em uma chamada');
       return;
     }
-    if (kAgoraAppId.isEmpty || kAgoraAppId.startsWith('COLE')) {
-      showToast('Configure o App ID do Agora em lib/config/agora_config.dart');
+    if (kAgoraAppId.isEmpty) {
+      showToast('App ID do Agora ausente: crie o secret AGORA_APP_ID no GitHub');
       return;
     }
     if (!await _permissoes(video)) {
