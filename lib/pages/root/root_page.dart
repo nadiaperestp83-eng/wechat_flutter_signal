@@ -2,13 +2,16 @@ import 'dart:developer';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:tencent_cloud_chat_sdk/manager/v2_tim_manager.dart';
 import 'package:wechat_flutter/core/presence_service.dart';
 import 'package:wechat_flutter/core/push_service.dart';
 import 'package:tencent_cloud_chat_sdk/models/v2_tim_value_callback.dart';
 import 'package:wechat_flutter/http/api.dart';
 import 'package:wechat_flutter/pages/contacts/contacts_page.dart';
-import 'package:wechat_flutter/pages/discover/discover_page.dart';
+import 'package:wechat_flutter/pages/calls/calls_page.dart';
+import 'package:wechat_flutter/pages/wechat_friends/page/wechat_friends_circle.dart';
+import 'package:wechat_flutter/tools/tr_app.dart';
 import 'package:wechat_flutter/pages/home/home_page.dart';
 import 'package:wechat_flutter/pages/mine/mine_page.dart';
 import 'package:wechat_flutter/pages/root/root_tabbar.dart';
@@ -76,11 +79,24 @@ class _RootPageState extends State<RootPage> {
         selectIcon: LoadImage('assets/images/tabbar_contacts_s.webp'),
         page: const ContactsPage(),
       ),
+      // Ligações (histórico: feitas, recebidas e perdidas).
+      // Ícone do fork: o telefone verde (cinza quando não selecionado).
       TabBarModel(
-        title: S.of(context).discover,
-        icon: LoadImage('assets/images/tabbar_discover_c.webp'),
-        selectIcon: LoadImage('assets/images/tabbar_discover_s.webp'),
-        page: DiscoverPage(),
+        title: trApp('Ligações', en: 'Calls', zh: '通话'),
+        icon: const _IconeFork(
+            'assets/images/contact/ic_voice.png', 25.0,
+            cinza: true),
+        selectIcon: const _IconeFork('assets/images/contact/ic_voice.png', 25.0),
+        page: const CallsPage(),
+      ),
+      // Momentos: tocar abre a tela direto (não é uma aba).
+      TabBarModel(
+        title: trApp('Momentos', en: 'Moments', zh: '朋友圈'),
+        icon: const _IconeFork('assets/images/discover/ff_Icon_album.webp', 26.0),
+        selectIcon:
+            const _IconeFork('assets/images/discover/ff_Icon_album.webp', 26.0),
+        page: const SizedBox.shrink(),
+        aoTocar: () => Get.to<void>(WeChatFriendsCircle()),
       ),
       TabBarModel(
         title: S.of(context).me,
@@ -91,6 +107,29 @@ class _RootPageState extends State<RootPage> {
     ];
     return Scaffold(
       body: RootTabBar(pages: pages, currentIndex: 0),
+    );
+  }
+}
+
+/// Ícone de aba feito com um asset do fork. [cinza] pinta com a cor dos
+/// outros ícones não selecionados; sem isso mantém as cores originais.
+class _IconeFork extends StatelessWidget {
+  const _IconeFork(this.img, this.largura, {this.cinza = false});
+
+  final String img;
+  final double largura;
+  final bool cinza;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 2.0),
+      child: Image.asset(
+        img,
+        width: largura,
+        color: cinza ? mainTextColor : null,
+        gaplessPlayback: true,
+      ),
     );
   }
 }
