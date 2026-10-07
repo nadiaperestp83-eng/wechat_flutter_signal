@@ -76,6 +76,12 @@ class RootTabBarState extends State<RootTabBar> {
       fixedColor: Colors.green,
       unselectedItemColor: mainTextColor,
       onTap: (int index) {
+        // Botão que abre uma tela direto (ex.: Momentos): não troca de aba.
+        final VoidCallback? aoTocar = widget.pages[index].aoTocar;
+        if (aoTocar != null) {
+          aoTocar();
+          return;
+        }
         setState(() => currentIndex = index);
         pageController.jumpToPage(currentIndex);
       },
@@ -138,6 +144,13 @@ class RootTabBarState extends State<RootTabBar> {
               ? ClampingScrollPhysics()
               : NeverScrollableScrollPhysics(),
           onPageChanged: (int index) {
+            // Deslizar até o botão "direto" abre a tela e volta para a aba atual.
+            final VoidCallback? aoTocar = widget.pages[index].aoTocar;
+            if (aoTocar != null) {
+              pageController.jumpToPage(currentIndex);
+              aoTocar();
+              return;
+            }
             setState(() => currentIndex = index);
           },
         ),
@@ -152,10 +165,15 @@ class TabBarModel {
     required this.page,
     required this.icon,
     required this.selectIcon,
+    this.aoTocar,
   });
 
   final String title;
   final Widget icon;
   final Widget selectIcon;
   final Widget page;
+
+  /// Se informado, tocar no botão executa isto (abre a tela direto) em vez
+  /// de mostrar [page] como aba.
+  final VoidCallback? aoTocar;
 }
