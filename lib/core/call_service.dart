@@ -12,6 +12,7 @@ import 'package:get/get.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wechat_flutter/config/agora_config.dart';
+import 'package:wechat_flutter/core/call_log.dart';
 import 'package:wechat_flutter/core/media_crypto.dart';
 import 'package:wechat_flutter/core/signal_core.dart';
 import 'package:wechat_flutter/im/nome_contato.dart';
@@ -27,9 +28,10 @@ class _Convite {
   final String canal;
   final String chave;
   final Uint8List sal;
+  final int ts;
 
-  const _Convite(
-      this.from, this.id, this.video, this.canal, this.chave, this.sal);
+  const _Convite(this.from, this.id, this.video, this.canal, this.chave,
+      this.sal, this.ts);
 }
 
 class _Sessao {
@@ -42,6 +44,7 @@ class _Sessao {
   final Uint8List sal;
   int uid = 0;
   bool conectou = false;
+  final int inicio = DateTime.now().millisecondsSinceEpoch;
 
   _Sessao({
     required this.id,
@@ -117,6 +120,7 @@ class CallService {
     _meuId = id;
     _ativo = true;
 
+    await CallLog.instance.iniciar(id);
     _escutar();
     _eventosCallkit?.cancel();
     _eventosCallkit = FlutterCallkitIncoming.onEvent.listen(_aoEventoCallkit);
@@ -145,6 +149,7 @@ class CallService {
     _pendentes.clear();
     _vistas.clear();
     _tratadas.clear();
+    await CallLog.instance.fechar();
   }
 
   void _escutar() {
@@ -245,10 +250,16 @@ class CallService {
 
     // Convite velho (a pessoa já desistiu ou o app ficou fechado): ignora.
     final int ts = (env['ts'] as num?)?.toInt() ?? 0;
-    if (DateTime.now().millisecondsSinceEpoch - ts > 60000) return;
+    final bool video = env['v'] == true;
+    if (DateTime.now().millisecondsSinceEpoch - ts > 60000) {
+      // O app estava fechado quando ligaram: fica como ligação perdida.
+      if (ts > 0) await _registrarPerdida(id, from, video, ts);
+      return;
+    }
 
     if (_sessao != null || _pendentes.isNotEmpty) {
       await _ctrl(from, id, 'busy');
+      await _registrarPerdida(id, from, video, ts);
       return;
     }
 
@@ -277,6 +288,7 @@ class CallService {
         env['ch'] as String,
         env['k'] as String,
         Uint8List.fromList(base64Decode(env['s'] as String)),
+        (env['ts'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
       );
     } catch (e) {
       debugPrint('[Chamadas] convite inválido: $e');
@@ -318,7 +330,10 @@ class CallService {
 
   void _cancelouAntesDeAtender(String? id) {
     if (id == null) return;
-    _pendentes.remove(id);
+    final _Convite? cv = _pendentes.remove(id);
+    if (cv != null) {
+      _registrarPerdida(id, cv.from, cv.video, cv.ts);
+    }
     try {
       FlutterCallkitIncoming.endCall(id);
     } catch (_) {}
@@ -341,7 +356,8 @@ class CallService {
         _aoRecusar(id, extra);
         break;
       case Event.actionCallTimeout:
-        _pendentes.remove(id);
+        final _Convite? cv = _pendentes.remove(id);
+        if (cv != null) _registrarPerdida(id, cv.from, cv.video, cv.ts);
         break;
       case Event.actionCallEnded:
         final _Sessao? s = _sessao;
@@ -408,6 +424,17 @@ class CallService {
     final String? from = cv?.from ?? (extra['from'] as String?);
     if (from != null && from.isNotEmpty) {
       await _ctrl(from, id, 'reject');
+    }
+    if (cv != null) {
+      await CallLog.instance.registrar(
+        id: id,
+        peer: cv.from,
+        video: cv.video,
+        entrada: true,
+        resultado: 'recusada',
+        ts: cv.ts,
+        dur: 0,
+      );
     }
   }
 
@@ -580,6 +607,27 @@ class CallService {
     _relogio?.cancel();
     final int duracao = segundos.value;
 
+    // Histórico (só neste aparelho).
+    String resultado;
+    if (s.conectou) {
+      resultado = 'atendida';
+    } else if (s.saindo) {
+      resultado = aviso == 'Chamada recusada'
+          ? 'recusada'
+          : (aviso == 'Ocupado' ? 'ocupado' : 'semResposta');
+    } else {
+      resultado = 'perdida';
+    }
+    await CallLog.instance.registrar(
+      id: s.id,
+      peer: s.peer,
+      video: s.video,
+      entrada: !s.saindo,
+      resultado: resultado,
+      ts: s.inicio,
+      dur: s.conectou ? duracao : 0,
+    );
+
     if (enviar != null) {
       await _ctrl(s.peer, s.id, enviar);
     }
@@ -611,6 +659,19 @@ class CallService {
   }
 
   // ------------------------------------------------------------ apoio
+
+  Future<void> _registrarPerdida(
+      String id, String peer, bool video, int ts) {
+    return CallLog.instance.registrar(
+      id: id,
+      peer: peer,
+      video: video,
+      entrada: true,
+      resultado: 'perdida',
+      ts: ts,
+      dur: 0,
+    );
+  }
 
   Future<void> _abrirTela() async {
     for (int i = 0; i < 80 && Get.key.currentState == null; i++) {
