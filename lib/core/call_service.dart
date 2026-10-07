@@ -158,16 +158,6 @@ class CallService {
       _entrada = _supabase
           .channel('calls:$_meuId')
           .onBroadcast(
-              event: 'invite',
-              callback: (dynamic p) {
-                final Map<String, dynamic> m = _corpo(p);
-                _aoReceberConviteBroadcast(
-                  from: m['from'] as String?,
-                  id: m['id'] as String?,
-                  video: m['v'] == true,
-                );
-              })
-          .onBroadcast(
               event: 'ctrl',
               callback: (dynamic p) => _aoReceberControle(_corpo(p)))
           .subscribe();
@@ -229,6 +219,8 @@ class CallService {
         's': base64Encode(s.sal),
         'ts': DateTime.now().millisecondsSinceEpoch,
       });
+      // O convite vai cifrado pela caixa de mensagens do chat: se o app da
+      // outra pessoa estiver fechado, o aviso de "Nova mensagem" dela acorda.
       await SignalCore().enviarConviteChamada(peer, envelope);
 
       _tempoToque = Timer(_tempoParaAtender, () {
@@ -245,20 +237,13 @@ class CallService {
 
   // ------------------------------------------------------------- receber
 
-  Future<void> _aoReceberConviteBroadcast({
-    String? from,
-    String? id,
-    required bool video,
-  }) async {
-    // Método auxiliar caso receba via broadcast direto no futuro
-  }
-
   /// Convite que chegou pela caixa de mensagens (o SignalCore já decifrou).
   Future<void> aoReceberConvite(String from, Map<String, dynamic> env) async {
     if (!_ativo || from == _meuId) return;
     final String? id = env['id'] as String?;
     if (id == null || !_vistas.add(id)) return;
 
+    // Convite velho (a pessoa já desistiu ou o app ficou fechado): ignora.
     final int ts = (env['ts'] as num?)?.toInt() ?? 0;
     if (DateTime.now().millisecondsSinceEpoch - ts > 60000) return;
 
@@ -433,61 +418,94 @@ class CallService {
     const String appId = kAgoraAppId;
 
     final RtcEngine rtc = createAgoraRtcEngine();
-    await rtc.initialize(RtcEngineContext(
-      appId: appId,
-      channelProfile: ChannelProfileType.channelProfileCommunication,
-    ));
+    try {
+      await _passo('initialize', () => rtc.initialize(RtcEngineContext(
+            appId: appId,
+            channelProfile: ChannelProfileType.channelProfileCommunication,
+          )));
 
-    rtc.registerEventHandler(RtcEngineEventHandler(
-      onJoinChannelSuccess: (RtcConnection conexao, int ms) {
-        debugPrint('[Chamadas] entrou no canal ${conexao.channelId}');
-      },
-      onUserJoined: (RtcConnection conexao, int uid, int ms) {
-        _remotoEntrou(s, uid);
-      },
-      onUserOffline:
-          (RtcConnection conexao, int uid, UserOfflineReasonType motivo) {
-        if (_sessao == s && s.conectou) {
-          _terminar(aviso: 'Chamada encerrada', enviar: null);
-        }
-      },
-      onError: (ErrorCodeType erro, String texto) {
-        debugPrint('[Chamadas] erro Agora: $erro$texto');
-      },
-    ));
+      rtc.registerEventHandler(RtcEngineEventHandler(
+        onJoinChannelSuccess: (RtcConnection conexao, int ms) async {
+          debugPrint('[Chamadas] entrou no canal ${conexao.channelId}');
+          // O alto-falante só pode ser trocado DEPOIS de entrar no canal.
+          try {
+            await rtc.setEnableSpeakerphone(s.video);
+          } catch (e) {
+            debugPrint('[Chamadas] alto-falante: $e');
+          }
+        },
+        onUserJoined: (RtcConnection conexao, int uid, int ms) {
+          _remotoEntrou(s, uid);
+        },
+        onUserOffline:
+            (RtcConnection conexao, int uid, UserOfflineReasonType motivo) {
+          if (_sessao == s && s.conectou) {
+            _terminar(aviso: 'Chamada encerrada', enviar: null);
+          }
+        },
+        onError: (ErrorCodeType erro, String texto) {
+          debugPrint('[Chamadas] erro Agora: $erro $texto');
+        },
+      ));
 
-    await rtc.enableAudio();
-    if (s.video) {
-      await rtc.enableVideo();
-      await rtc.startPreview();
+      await _passo('enableAudio', () => rtc.enableAudio());
+      if (s.video) {
+        await _passo('enableVideo', () => rtc.enableVideo());
+        await _passo('startPreview', () => rtc.startPreview());
+      }
+
+      // Mídia cifrada ponta a ponta: a chave só existe nos dois aparelhos
+      // (veio dentro do convite Signal). Tem de ser ligada ANTES de entrar.
+      await _passo(
+          'enableEncryption',
+          () => rtc.enableEncryption(
+                enabled: true,
+                config: EncryptionConfig(
+                  encryptionMode: EncryptionMode.aes256Gcm2,
+                  encryptionKey: s.chave,
+                  encryptionKdfSalt: s.sal,
+                ),
+              ));
+
+      // Antes de entrar só se define a rota PADRÃO do áudio.
+      await _passo('rotaDeAudio',
+          () => rtc.setDefaultAudioRouteToSpeakerphone(s.video));
+      altoFalante.value = s.video;
+
+      motor.value = rtc;
+      await _passo(
+          'joinChannel',
+          () => rtc.joinChannel(
+                token: '',
+                channelId: s.canal,
+                uid: s.uid,
+                options: ChannelMediaOptions(
+                  clientRoleType: ClientRoleType.clientRoleBroadcaster,
+                  channelProfile: ChannelProfileType.channelProfileCommunication,
+                  publishMicrophoneTrack: true,
+                  publishCameraTrack: s.video,
+                  autoSubscribeAudio: true,
+                  autoSubscribeVideo: s.video,
+                ),
+              ));
+    } catch (e) {
+      // Se falhar no meio, libera o motor: um motor "meio iniciado" faz a
+      // próxima tentativa falhar também (erro -3).
+      motor.value = null;
+      try {
+        await rtc.release();
+      } catch (_) {}
+      rethrow;
     }
+  }
 
-    await rtc.enableEncryption(
-      enabled: true,
-      config: EncryptionConfig(
-        encryptionMode: EncryptionMode.aes256Gcm2,
-        encryptionKey: s.chave,
-        encryptionKdfSalt: s.sal,
-      ),
-    );
-
-    await rtc.setEnableSpeakerphone(s.video);
-    altoFalante.value = s.video;
-
-    motor.value = rtc;
-    await rtc.joinChannel(
-      token: '',
-      channelId: s.canal,
-      uid: s.uid,
-      options: ChannelMediaOptions(
-        clientRoleType: ClientRoleType.clientRoleBroadcaster,
-        channelProfile: ChannelProfileType.channelProfileCommunication,
-        publishMicrophoneTrack: true,
-        publishCameraTrack: s.video,
-        autoSubscribeAudio: true,
-        autoSubscribeVideo: s.video,
-      ),
-    );
+  /// Executa uma etapa do Agora e, se falhar, diz QUAL etapa falhou.
+  Future<T> _passo<T>(String nome, Future<T> Function() acao) async {
+    try {
+      return await acao();
+    } catch (e) {
+      throw StateError('$nome: $e');
+    }
   }
 
   void _remotoEntrou(_Sessao s, int uid) {
@@ -503,7 +521,7 @@ class CallService {
       segundos.value = segundos.value + 1;
     });
     try {
-      FlutterCallkitIncoming.endCall(s.id);
+      FlutterCallkitIncoming.endCall(s.id); // some a notificação de toque
     } catch (_) {}
   }
 
@@ -604,6 +622,15 @@ class CallService {
     _telaAberta = false;
   }
 
+  Future<void> _esperarSignal() async {
+    for (int i = 0; i < 80 && !SignalCore().estaInicializado; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+    if (!SignalCore().estaInicializado) {
+      throw StateError('Signal não inicializou a tempo');
+    }
+  }
+
   Future<bool> _permissoes(bool video) async {
     final Map<Permission, PermissionStatus> r = await <Permission>[
       Permission.microphone,
@@ -642,30 +669,37 @@ class CallService {
       } else if (status == RealtimeSubscribeStatus.channelError ||
           status == RealtimeSubscribeStatus.timedOut ||
           status == RealtimeSubscribeStatus.closed) {
-        pronto.completeError(erro ?? StateError('Erro ao conectar canal'));
+        pronto.completeError(erro ?? StateError('canal: $status'));
       }
     });
-
     try {
-      await pronto.future.timeout(const Duration(seconds: 5));
-    } catch (_) {}
+      await pronto.future.timeout(const Duration(seconds: 8));
+    } catch (_) {
+      try {
+        await _supabase.removeChannel(canal);
+      } catch (_) {}
+      rethrow;
+    }
     _saida[destino] = canal;
     return canal;
   }
 
-  Future<void> _ctrl(String destino, String id, String tipo) async {
-    try {
-      final RealtimeChannel c = await _canalSaida(destino);
-      await c.sendBroadcastMessage(
-        event: 'ctrl',
-        payload: <String, dynamic>{
-          'from': _meuId,
-          'id': id,
-          'k': tipo,
-        },
-      );
-    } catch (e) {
-      debugPrint('[Chamadas] falha ao enviar ctrl $tipo:$e');
+  Future<void> _enviar(
+      String destino, String evento, Map<String, dynamic> payload) async {
+    for (int tentativa = 0; tentativa < 2; tentativa++) {
+      try {
+        final RealtimeChannel canal = await _canalSaida(destino);
+        await canal.sendBroadcastMessage(event: evento, payload: payload);
+        return;
+      } catch (e) {
+        final RealtimeChannel? ruim = _saida.remove(destino);
+        if (ruim != null) {
+          try {
+            await _supabase.removeChannel(ruim);
+          } catch (_) {}
+        }
+        if (tentativa == 1) rethrow;
+      }
     }
   }
 
@@ -679,36 +713,100 @@ class CallService {
     }
   }
 
+  Future<void> _ctrl(String destino, String id, String tipo) async {
+    try {
+      await _enviar(destino, 'ctrl', <String, dynamic>{
+        'from': _meuId,
+        'id': id,
+        'k': tipo,
+      });
+    } catch (e) {
+      debugPrint('[Chamadas] não consegui avisar $destino ($tipo): $e');
+    }
+  }
+
+  // ---- tela cheia de chamada recebida
+
+  Future<bool> _jaToca(String id) => _jaTocaEstatico(id);
+
+  static Future<bool> _jaTocaEstatico(String id) async {
+    try {
+      final dynamic ativos = await FlutterCallkitIncoming.activeCalls();
+      if (ativos is List) {
+        for (final dynamic c in ativos) {
+          if (c is Map && c['id'] == id) return true;
+        }
+      }
+    } catch (_) {}
+    return false;
+  }
+
   Future<void> _mostrarToque({
     required String id,
     required String nome,
     required bool video,
     required Map<String, dynamic> extra,
+  }) =>
+      _mostrarToqueEstatico(id: id, nome: nome, video: video, extra: extra);
+
+  static Future<void> _mostrarToqueEstatico({
+    required String id,
+    required String nome,
+    required bool video,
+    required Map<String, dynamic> extra,
   }) async {
-    try {
-      await FlutterCallkitIncoming.showCallkitIncoming(CallKitParams(
-        id: id,
-        nameCaller: nome,
-        appName: 'WeChat',
-        type: video ? 1 : 0,
-        extra: extra,
-      ));
-    } catch (e) {
-      debugPrint('[Chamadas] falha ao exibir callkit: $e');
-    }
+    final CallKitParams params = CallKitParams(
+      id: id,
+      nameCaller: nome,
+      appName: 'WeChat',
+      handle: video ? 'Chamada de vídeo' : 'Chamada de voz',
+      type: video ? 1 : 0,
+      duration: 45000,
+      textAccept: 'Atender',
+      textDecline: 'Recusar',
+      extra: extra,
+      missedCallNotification: NotificationParams(
+        showNotification: true,
+        isShowCallback: false,
+        subtitle: 'Chamada perdida',
+      ),
+      android: AndroidParams(
+        isCustomNotification: true,
+        isShowLogo: false,
+        ringtonePath: 'system_ringtone_default',
+        backgroundColor: '#1c1c1e',
+        actionColor: '#4CAF50',
+        textColor: '#ffffff',
+        incomingCallNotificationChannelName: 'Chamada recebida',
+        missedCallNotificationChannelName: 'Chamada perdida',
+      ),
+      ios: IOSParams(
+        handleType: 'generic',
+        supportsVideo: true,
+        ringtonePath: 'system_ringtone_default',
+      ),
+    );
+    await FlutterCallkitIncoming.showCallkitIncoming(params);
   }
 
+  // ---- ids
+
+  String _hex(int bytes) {
+    final StringBuffer sb = StringBuffer();
+    for (int i = 0; i < bytes; i++) {
+      sb.write(_aleatorio.nextInt(256).toRadixString(16).padLeft(2, '0'));
+    }
+    return sb.toString();
+  }
+
+  /// UUID v4 (o CallKit pede esse formato).
   String _novoUuid() {
-    final Random r = Random.secure();
-    final List<int> b = List<int>.generate(16, (_) => r.nextInt(256));
+    final List<int> b =
+        List<int>.generate(16, (_) => _aleatorio.nextInt(256));
     b[6] = (b[6] & 0x0f) | 0x40;
     b[8] = (b[8] & 0x3f) | 0x80;
-    final String hex = b.map((int x) => x.toRadixString(16).padLeft(2, '0')).join();
-    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
-  }
-
-  String _hex(int n) {
-    final List<int> b = List<int>.generate(n ~/ 2, (_) => _aleatorio.nextInt(256));
-    return b.map((int x) => x.toRadixString(16).padLeft(2, '0')).join();
+    String h(int i) => b[i].toRadixString(16).padLeft(2, '0');
+    return '${h(0)}${h(1)}${h(2)}${h(3)}-${h(4)}${h(5)}-${h(6)}${h(7)}-'
+        '${h(8)}${h(9)}-${h(10)}${h(11)}${h(12)}${h(13)}${h(14)}${h(15)}';
   }
 }
