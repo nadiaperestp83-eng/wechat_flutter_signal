@@ -57,12 +57,12 @@ class _Sessao {
 /// Chamadas de voz e vídeo (Agora) com mídia cifrada ponta a ponta.
 ///
 ///  - O convite (canal + chave de mídia) viaja cifrado na sessão Signal, pela
-///    mesma caixa de mensagens do chat (já apagada do servidor após a leitura).[span_1](start_span)[span_1](end_span)
+///    mesma caixa de mensagens do chat (já apagada do servidor após a leitura).
 ///  - Os avisos durante a chamada (atendeu, recusou, desligou) vão por
-///    Supabase Realtime Broadcast em `calls:<email>` (volátil).[span_2](start_span)[span_2](end_span)
-///  - A mídia usa a criptografia do Agora (AES-256-GCM) com a chave do convite.[span_3](start_span)[span_3](end_span)
-///  - Nada de chamada é gravado: nem áudio, nem vídeo, nem histórico.[span_4](start_span)[span_4](end_span)
-///  - Sem Edge Function e sem token: o projeto do Agora usa só o App ID.[span_5](start_span)[span_5](end_span)
+///    Supabase Realtime Broadcast em `calls:<email>` (volátil).
+///  - A mídia usa a criptografia do Agora (AES-256-GCM) com a chave do convite.
+///  - Nada de chamada é gravado: nem áudio, nem vídeo, nem histórico.
+///  - Sem Edge Function e sem token: o projeto do Agora usa só o App ID.
 class CallService {
   CallService._();
   static final CallService instance = CallService._();
@@ -71,7 +71,7 @@ class CallService {
   static const Duration _tempoParaAtender = Duration(seconds: 45);
 
   /// Gancho para o futuro controle de minutos: recebe a duração (em
-  /// segundos) quando uma chamada conectada termina.[span_6](start_span)[span_6](end_span)
+  /// segundos) quando uma chamada conectada termina.
   Future<void> Function(int segundos)? aoContabilizar;
 
   // ---- estado que a tela de chamada observa
@@ -197,11 +197,11 @@ class CallService {
       return;
     }
     if (kAgoraAppId.isEmpty) {
-      showToast('App ID do Agora ausente: crie o secret AGORA_APP_ID no GitHub');[span_7](start_span)[span_7](end_span)
+      showToast('App ID do Agora ausente: crie o secret AGORA_APP_ID no GitHub');
       return;
     }
     if (!await _permissoes(video)) {
-      showToast('Permita o microfone${video ? ' e a câmera' : ''} para ligar');[span_8](start_span)[span_8](end_span)
+      showToast('Permita o microfone${video ? ' e a câmera' : ''} para ligar');
       return;
     }
 
@@ -229,7 +229,7 @@ class CallService {
         's': base64Encode(s.sal),
         'ts': DateTime.now().millisecondsSinceEpoch,
       });
-      await SignalCore().enviarConviteChamada(peer, envelope);[span_9](start_span)[span_9](end_span)
+      await SignalCore().enviarConviteChamada(peer, envelope);
 
       _tempoToque = Timer(_tempoParaAtender, () {
         _terminar(aviso: 'Sem resposta', enviar: 'cancel');
@@ -253,7 +253,7 @@ class CallService {
     // Método auxiliar caso receba via broadcast direto no futuro
   }
 
-  /// Convite que chegou pela caixa de mensagens (o SignalCore já decifrou).[span_10](start_span)[span_10](end_span)
+  /// Convite que chegou pela caixa de mensagens (o SignalCore já decifrou).
   Future<void> aoReceberConvite(String from, Map<String, dynamic> env) async {
     if (!_ativo || from == _meuId) return;
     final String? id = env['id'] as String?;
@@ -385,7 +385,7 @@ class CallService {
       if (cv == null) throw StateError('convite não encontrado');
 
       if (!await _permissoes(cv.video)) {
-        showToast('Permita o microfone${cv.video ? ' e a câmera' : ''}');[span_11](start_span)[span_11](end_span)
+        showToast('Permita o microfone${cv.video ? ' e a câmera' : ''}');
         await _ctrl(cv.from, id, 'reject');
         await FlutterCallkitIncoming.endCall(id);
         return;
@@ -656,8 +656,7 @@ class CallService {
   Future<void> _ctrl(String destino, String id, String tipo) async {
     try {
       final RealtimeChannel c = await _canalSaida(destino);
-      await c.send(
-        type: BroadcastAction.broadcast,
+      await c.sendBroadcastMessage(
         event: 'ctrl',
         payload: <String, dynamic>{
           'from': _meuId,
