@@ -34,7 +34,8 @@ jobs:
         run: |
           flutter build apk --release --no-shrink \
             --dart-define=SIGNAL_SUPABASE_ANON_KEY=${{ secrets.SIGNAL_SUPABASE_ANON_KEY }} \
-            --dart-define=SIGNAL_SUPABASE_URL=${{ secrets.SIGNAL_SUPABASE_URL }}
+            --dart-define=SIGNAL_SUPABASE_URL=${{ secrets.SIGNAL_SUPABASE_URL }} \
+            --dart-define=AGORA_APP_ID=${{ secrets.AGORA_APP_ID }}
 
       - name: Publicar APK como artefato do workflow
         uses: actions/upload-artifact@v4
