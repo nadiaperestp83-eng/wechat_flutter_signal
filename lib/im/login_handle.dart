@@ -5,7 +5,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wechat_flutter/config/provider_config.dart';
 import 'package:wechat_flutter/provider/global_model.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
-import 'package:wechat_flutter/core/presence_service.dart';
 import 'package:wechat_flutter/core/push_service.dart';
 import 'package:wechat_flutter/core/signal_core.dart';
 
@@ -258,11 +257,115 @@ class ImLoginManager {
   }
 
   // ---------------------------------------------------------------------------
+  // CÓDIGO POR E-MAIL (tela única: entrar e cadastrar são a mesma coisa)
+  //
+  //  1. enviarCodigoEmail: signInWithOtp(shouldCreateUser: true). Se o e-mail
+  //     já existe, a pessoa recebe o código para entrar; se não existe, a
+  //     conta é criada na hora e o código sai do mesmo jeito.
+  //  2. verificarCodigoEmail: verifyOTP com o código de 6 dígitos e entra no app.
+  //
+  // Requer no painel do Supabase (Authentication → Emails → Templates):
+  //   os modelos "Magic Link" e "Confirm signup" precisam conter {{ .Token }}
+  //   (é isso que faz o e-mail trazer o código em vez do link).
+  // ---------------------------------------------------------------------------
+
+  /// Envia o código de 6 dígitos para o e-mail. Cria a conta se for nova.
+  static Future<bool> enviarCodigoEmail(String emailRaw) async {
+    final String email = _normalizarEmail(emailRaw);
+    if (!_emailValido(email)) {
+      showToast('Digite um e-mail válido');
+      return false;
+    }
+    try {
+      await _supabase.auth.signInWithOtp(
+        email: email,
+        shouldCreateUser: true,
+      );
+      return true;
+    } on AuthException catch (e) {
+      showToast(_traduzirErroAuth(e));
+      return false;
+    } catch (e) {
+      showToast('Falha ao enviar o código: $e');
+      return false;
+    }
+  }
+
+  /// Confere o código e entra no app. Devolve true se entrou.
+  /// O apelido de conta nova é a parte do e-mail antes do @.
+  static Future<bool> verificarCodigoEmail(
+    String emailRaw,
+    String codigo,
+    BuildContext context,
+  ) async {
+    final String email = _normalizarEmail(emailRaw);
+    final String token = codigo.trim();
+
+    if (!_emailValido(email)) {
+      showToast('Digite um e-mail válido');
+      return false;
+    }
+    if (token.length != 6) {
+      showToast('Digite o código de 6 dígitos');
+      return false;
+    }
+
+    try {
+      final resposta = await _supabase.auth.verifyOTP(
+        type: OtpType.email,
+        email: email,
+        token: token,
+      );
+      if (resposta.session == null) {
+        showToast('Código inválido ou expirado.');
+        return false;
+      }
+
+      // Conta que já existia mantém o apelido que escolheu; conta nova usa a
+      // parte do e-mail antes do @.
+      String? apelido = await _apelidoSalvo(email);
+      if (apelido == null) {
+        final metadado = resposta.user?.userMetadata?['nickname'];
+        if (metadado is String && metadado.trim().isNotEmpty) {
+          apelido = metadado.trim();
+        }
+      }
+      apelido ??= email.split('@').first;
+
+      await _concluirLoginEmail(
+        email: email,
+        apelido: apelido,
+        context: context,
+      );
+      return true;
+    } on AuthException catch (e) {
+      showToast(_traduzirErroAuth(e));
+      return false;
+    } catch (e) {
+      showToast('Falha ao verificar: $e');
+      return false;
+    }
+  }
+
+  /// Apelido já publicado em signal_accounts (conta antiga), se houver.
+  static Future<String?> _apelidoSalvo(String email) async {
+    try {
+      final linha = await _supabase
+          .from('signal_accounts')
+          .select('display_name')
+          .eq('phone', email)
+          .maybeSingle();
+      final dynamic nome = linha == null ? null : linha['display_name'];
+      if (nome is String && nome.trim().isNotEmpty) return nome.trim();
+    } catch (_) {}
+    return null;
+  }
+
+  // ---------------------------------------------------------------------------
 
   static Future<void> loginOut(BuildContext context) async {
     final model = Provider.of<GlobalModel>(context, listen: false);
     await PushService.instance.parar(); // precisa ser antes do signOut
-    await PresenceService.instance.parar(); // grava o "visto por último"
     await SignalCore().encerrarCasulo();
     await _supabase.auth.signOut();
     model.goToLogin = true;
@@ -285,6 +388,17 @@ class ImLoginManager {
 
   static String _traduzirErroAuth(AuthException e) {
     final msg = e.message.toLowerCase();
+    if (msg.contains('token has expired') ||
+        msg.contains('otp_expired') ||
+        (msg.contains('invalid') && msg.contains('token'))) {
+      return 'Código inválido ou expirado.';
+    }
+    if (msg.contains('email rate limit') || msg.contains('over_email_send_rate_limit')) {
+      return 'Muitos e-mails enviados. Aguarde alguns minutos e tente de novo.';
+    }
+    if (msg.contains('error sending') || msg.contains('smtp')) {
+      return 'O Supabase não conseguiu enviar o e-mail. Confira o SMTP em Authentication → Emails.';
+    }
     if (msg.contains('invalid login credentials')) {
       return 'E-mail ou senha incorretos.';
     }
