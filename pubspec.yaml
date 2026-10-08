@@ -57,6 +57,7 @@ dependencies:
   supabase_flutter: ^2.6.0 #transporte das mensagens/bundles criptografados
   pointycastle: ^3.7.3 #AES-256-GCM da foto de perfil (Profile Key) e anexos
   qr_flutter: ^4.1.0 #QR code real do meu perfil (e-mail)
+  google_fonts: ^6.2.1 #fonte Inter do título "Kakaô"
   agora_rtc_engine: ^6.5.0 #chamadas de voz e vídeo (mídia cifrada ponta a ponta)
   flutter_callkit_incoming: ^2.5.2 #tela cheia de chamada recebida (app fechado/bloqueado)
   firebase_core: ^3.8.0 #base do Firebase (usado só pro push)
