@@ -92,6 +92,7 @@ class RootTabBarState extends State<RootTabBar> {
 
     var appBar = ComMomBar(
       title: widget.pages[currentIndex].title,
+      titleW: widget.pages[currentIndex].tituloTopo,
       showShadow: false,
       rightDMActions: <Widget>[
         InkWell(
@@ -166,6 +167,7 @@ class TabBarModel {
     required this.icon,
     required this.selectIcon,
     this.aoTocar,
+    this.tituloTopo,
   });
 
   final String title;
@@ -176,4 +178,8 @@ class TabBarModel {
   /// Se informado, tocar no botão executa isto (abre a tela direto) em vez
   /// de mostrar [page] como aba.
   final VoidCallback? aoTocar;
+
+  /// Se informado, aparece no topo no lugar do [title] (o [title] continua
+  /// sendo o rótulo do botão da barra inferior).
+  final Widget? tituloTopo;
 }
