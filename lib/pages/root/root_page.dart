@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:tencent_cloud_chat_sdk/manager/v2_tim_manager.dart';
 import 'package:wechat_flutter/core/presence_service.dart';
 import 'package:wechat_flutter/core/push_service.dart';
@@ -69,7 +70,9 @@ class _RootPageState extends State<RootPage> {
   Widget build(BuildContext context) {
     List<TabBarModel> pages = <TabBarModel>[
       TabBarModel(
-          title: S.of(context).weChat,
+          // Rótulo da barra inferior: "Chat". No topo aparece "Kakaô".
+          title: trApp('Chat', en: 'Chat', zh: '聊天'),
+          tituloTopo: _tituloKakao(),
           icon: LoadImage('assets/images/tabbar_chat_c.webp'),
           selectIcon: LoadImage('assets/images/tabbar_chat_s.webp'),
           page: HomePage()),
@@ -109,6 +112,22 @@ class _RootPageState extends State<RootPage> {
       body: RootTabBar(pages: pages, currentIndex: 0),
     );
   }
+}
+
+/// Título "Kakaô" no topo: Inter, peso forte e letras levemente juntas
+/// (visual de título grande do iOS moderno).
+Widget _tituloKakao() {
+  return Text(
+    'Kakaô',
+    maxLines: 1,
+    style: GoogleFonts.inter(
+      color: Colors.black,
+      fontSize: 27.0,
+      fontWeight: FontWeight.w800,
+      letterSpacing: -1.0,
+      height: 1.1,
+    ),
+  );
 }
 
 /// Ícone de aba feito com um asset do fork. [cinza] pinta com a cor dos
