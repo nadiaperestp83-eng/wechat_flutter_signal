@@ -1,19 +1,69 @@
+import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:wechat_flutter/core/moments_service.dart';
-import 'package:wechat_flutter/pages/wechat_friends/chat_style.dart';
 import 'package:wechat_flutter/pages/wechat_friends/page/publish_dynamic.dart';
+import 'package:wechat_flutter/pages/wechat_friends/page/story_viewer.dart';
 import 'package:wechat_flutter/provider/global_model.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
 
-import '../ui/item_dynamic.dart';
+const Color _verde = Color.fromRGBO(8, 191, 98, 1.0);
 
-/// Momentos: posts efêmeros (24 h), guardados só neste aparelho.
+/// Posts de uma pessoa, do mais antigo ao mais novo.
+class _Grupo {
+  final String autor;
+  final bool meu;
+  final List<MomentPost> posts;
+
+  const _Grupo(this.autor, this.meu, this.posts);
+
+  bool get novo => !meu && posts.any((MomentPost p) => !p.seen);
+
+  int get slides => posts.fold<int>(
+      0, (int s, MomentPost p) => s + (p.images.isEmpty ? 1 : p.images.length));
+
+  int get ultimo => posts.last.ts;
+}
+
+/// Anel em volta do avatar: um arco por slide (verde = novo, cinza = visto).
+class _AnelPainter extends CustomPainter {
+  final int segmentos;
+  final Color cor;
+
+  const _AnelPainter(this.segmentos, this.cor);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint pincel = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0
+      ..strokeCap = StrokeCap.round
+      ..color = cor;
+    final Rect rect = Rect.fromLTWH(1.5, 1.5, size.width - 3.0, size.height - 3.0);
+    final int n = segmentos.clamp(1, 30);
+
+    if (n == 1) {
+      canvas.drawArc(rect, 0.0, 2 * pi, false, pincel);
+      return;
+    }
+    const double vao = 0.16;
+    final double arco = (2 * pi - n * vao) / n;
+    for (int i = 0; i < n; i++) {
+      canvas.drawArc(rect, -pi / 2 + i * (arco + vao) + vao / 2, arco, false, pincel);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _AnelPainter antigo) =>
+      antigo.segmentos != segmentos || antigo.cor != cor;
+}
+
+/// Aba Momentos no estilo "status": meu status no topo, depois as
+/// atualizações recentes e as já vistas. Tudo some em 24 horas.
 class WeChatFriendsCircle extends StatefulWidget {
   WeChatFriendsCircle({Key? key}) : super(key: key);
 
@@ -22,11 +72,6 @@ class WeChatFriendsCircle extends StatefulWidget {
 }
 
 class _WeChatFriendsCircleState extends State<WeChatFriendsCircle> {
-  static const double headerHeight = 250.0;
-  static const double avatarCapa = 70.0;
-
-  int maxImages = MomentsService.maxImagens;
-
   @override
   void initState() {
     super.initState();
@@ -34,68 +79,199 @@ class _WeChatFriendsCircleState extends State<WeChatFriendsCircle> {
     MomentsService.instance.purgarExpirados();
   }
 
-  String _meuNome(GlobalModel model) {
-    final String n = model.nickName;
-    if (strNoEmpty(n) && n != 'nickName') return n;
-    return model.account;
+  List<_Grupo> _agrupar(List<MomentPost> lista) {
+    final Map<String, List<MomentPost>> mapa = <String, List<MomentPost>>{};
+    for (final MomentPost p in lista) {
+      mapa.putIfAbsent(p.mine ? '_eu' : p.author, () => <MomentPost>[]).add(p);
+    }
+    return mapa.entries.map((MapEntry<String, List<MomentPost>> e) {
+      // listar() vem do mais novo para o mais antigo: inverte.
+      final List<MomentPost> posts = e.value.reversed.toList();
+      return _Grupo(posts.first.author, e.key == '_eu', posts);
+    }).toList();
   }
 
-  /// Capa com nome e foto no canto (se a imagem da capa não carregar,
-  /// fica um fundo escuro no lugar, como no WeChat).
-  Widget _capa(GlobalModel model) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: <Widget>[
-        SizedBox(
-          width: double.infinity,
-          height: headerHeight,
-          child: Stack(
-            fit: StackFit.expand,
-            children: <Widget>[
-              Container(color: const Color(0xff555555)),
-              Image.network(
-                backgroundImage,
-                fit: BoxFit.cover,
-                errorBuilder: (BuildContext c, Object e, StackTrace? s) =>
-                    const SizedBox.shrink(),
-              ),
-            ],
+  void _abrirViewer(List<_Grupo> ordem, int indice) {
+    Get.to<void>(StoryViewerPage(
+      grupos: ordem.map((_Grupo g) => g.posts).toList(),
+      inicial: indice,
+    ));
+  }
+
+  // ------------------------------------------------------------ publicar
+
+  Future<void> _escolherFoto() async {
+    final String? escolha = await showModalBottomSheet<String>(
+      context: context,
+      builder: (BuildContext ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Tirar foto'),
+              onTap: () => Navigator.pop(ctx, 'camera'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Escolher da galeria'),
+              onTap: () => Navigator.pop(ctx, 'galeria'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || escolha == null) return;
+
+    try {
+      final List<Uint8List> bytes = <Uint8List>[];
+      if (escolha == 'camera') {
+        final XFile? foto = await ImagePicker().pickImage(
+          source: ImageSource.camera,
+          maxWidth: 1080,
+          maxHeight: 1080,
+          imageQuality: 50,
+        );
+        if (foto == null) return;
+        bytes.add(await foto.readAsBytes());
+      } else {
+        final List<XFile>? fotos = await ImagePicker().pickMultiImage(
+          maxWidth: 1080,
+          maxHeight: 1080,
+          imageQuality: 50,
+        );
+        if (fotos == null || fotos.isEmpty) return;
+        for (final XFile f in fotos.take(MomentsService.maxImagens)) {
+          bytes.add(await f.readAsBytes());
+        }
+      }
+      if (!mounted) return;
+      Get.to<void>(PublishDynamicPage(images: bytes));
+    } catch (e) {
+      showToast('Não foi possível abrir: $e');
+    }
+  }
+
+  void _escreverTexto() => Get.to<void>(const PublishDynamicPage(modoTexto: true));
+
+  // ------------------------------------------------------------ pedaços
+
+  Widget _avatarComAnel(String autor, int slides, bool novo, {bool meu = false}) {
+    final Color cor = (novo || meu) ? _verde : Colors.grey.shade400;
+    return SizedBox(
+      width: 58.0,
+      height: 58.0,
+      child: CustomPaint(
+        painter: _AnelPainter(slides, cor),
+        child: Padding(
+          padding: const EdgeInsets.all(5.0),
+          child: ClipOval(
+            child: ImageView(
+              img: 'perfil:$autor',
+              width: 48.0,
+              height: 48.0,
+              fit: BoxFit.cover,
+              isRadius: false,
+            ),
           ),
         ),
-        Positioned(
-          right: 12.0,
-          bottom: -(avatarCapa / 2) + 8,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      ),
+    );
+  }
+
+  Widget _linha({
+    required Widget avatar,
+    required String titulo,
+    required String subtitulo,
+    required VoidCallback aoTocar,
+  }) {
+    return InkWell(
+      onTap: aoTocar,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        child: Row(
+          children: <Widget>[
+            avatar,
+            const SizedBox(width: 14.0),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(titulo,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 17.0, fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 3.0),
+                  Text(subtitulo,
+                      style: TextStyle(fontSize: 13.5, color: mainTextColor)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _cabecalho(String texto) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16.0, 18.0, 16.0, 6.0),
+      child: Text(texto,
+          style: TextStyle(
+              fontSize: 14.0,
+              fontWeight: FontWeight.w600,
+              color: mainTextColor)),
+    );
+  }
+
+  Widget _meuStatus(_Grupo? meu, String meuId) {
+    if (meu == null) {
+      return _linha(
+        avatar: SizedBox(
+          width: 58.0,
+          height: 58.0,
+          child: Stack(
             children: <Widget>[
               Padding(
-                padding: const EdgeInsets.only(top: 10.0, right: 10.0),
-                child: Text(
-                  _meuNome(model),
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 17.0,
-                      fontWeight: FontWeight.w600,
-                      shadows: <Shadow>[
-                        Shadow(blurRadius: 4.0, color: Colors.black54)
-                      ]),
+                padding: const EdgeInsets.all(5.0),
+                child: ClipOval(
+                  child: ImageView(
+                    img: 'perfil:$meuId',
+                    width: 48.0,
+                    height: 48.0,
+                    fit: BoxFit.cover,
+                    isRadius: false,
+                  ),
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.all(1.5),
-                color: Colors.white,
-                child: ImageView(
-                  img: strNoEmpty(model.avatar) ? model.avatar : defIcon,
-                  width: avatarCapa,
-                  height: avatarCapa,
-                  fit: BoxFit.cover,
-                  isRadius: false,
+              Positioned(
+                right: 0.0,
+                bottom: 0.0,
+                child: Container(
+                  width: 22.0,
+                  height: 22.0,
+                  decoration: BoxDecoration(
+                    color: _verde,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2.0),
+                  ),
+                  child: const Icon(Icons.add, color: Colors.white, size: 14.0),
                 ),
               ),
             ],
           ),
         ),
-      ],
+        titulo: 'Meu status',
+        subtitulo: 'Toque para adicionar um momento',
+        aoTocar: _escolherFoto,
+      );
+    }
+    return _linha(
+      avatar: _avatarComAnel(meuId, meu.slides, true, meu: true),
+      titulo: 'Meu status',
+      subtitulo: quandoStatus(meu.ultimo),
+      aoTocar: () => _abrirViewer(<_Grupo>[meu], 0),
     );
   }
 
@@ -105,116 +281,83 @@ class _WeChatFriendsCircleState extends State<WeChatFriendsCircle> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: ComMomBar(
-        title: 'Momentos',
-        rightDMActions: <Widget>[
-          IconButton(
-            icon: const Icon(Icons.camera_alt_outlined, color: Colors.black),
-            onPressed: () => _showDialog(context),
-          )
+      appBar: ComMomBar(title: 'Momentos'),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          FloatingActionButton.small(
+            heroTag: 'status_texto',
+            backgroundColor: Colors.grey.shade200,
+            elevation: 1.0,
+            onPressed: _escreverTexto,
+            child: const Icon(Icons.edit, color: Colors.black54),
+          ),
+          const SizedBox(height: 14.0),
+          FloatingActionButton(
+            heroTag: 'status_foto',
+            backgroundColor: _verde,
+            onPressed: _escolherFoto,
+            child: const Icon(Icons.camera_alt, color: Colors.white),
+          ),
         ],
       ),
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        child: Column(children: <Widget>[
-          _capa(model),
-          const SizedBox(height: avatarCapa / 2 + 6),
-          ValueListenableBuilder<int>(
-            valueListenable: MomentsService.instance.versao,
-            builder: (BuildContext context, int _, Widget? __) {
-              final List<MomentPost> posts = MomentsService.instance.listar();
-              if (posts.isEmpty) {
-                return Padding(
+      body: ValueListenableBuilder<int>(
+        valueListenable: MomentsService.instance.versao,
+        builder: (BuildContext context, int _, Widget? __) {
+          final List<_Grupo> grupos =
+              _agrupar(MomentsService.instance.listar());
+
+          _Grupo? meu;
+          final List<_Grupo> novos = <_Grupo>[];
+          final List<_Grupo> vistos = <_Grupo>[];
+          for (final _Grupo g in grupos) {
+            if (g.meu) {
+              meu = g;
+            } else if (g.novo) {
+              novos.add(g);
+            } else {
+              vistos.add(g);
+            }
+          }
+          int porRecente(_Grupo a, _Grupo b) => b.ultimo.compareTo(a.ultimo);
+          novos.sort(porRecente);
+          vistos.sort(porRecente);
+          final List<_Grupo> ordem = <_Grupo>[...novos, ...vistos];
+
+          Widget linhaDe(_Grupo g, int indice) {
+            final MomentPost ref = g.posts.last;
+            return _linha(
+              avatar: _avatarComAnel(g.autor, g.slides, g.novo),
+              titulo: MomentsService.instance.nomeDe(ref),
+              subtitulo: quandoStatus(g.ultimo),
+              aoTocar: () => _abrirViewer(ordem, indice),
+            );
+          }
+
+          return ListView(
+            padding: const EdgeInsets.only(bottom: 120.0),
+            children: <Widget>[
+              const SizedBox(height: 6.0),
+              _meuStatus(meu, model.account),
+              if (ordem.isEmpty)
+                Padding(
                   padding: const EdgeInsets.symmetric(
-                      vertical: 60.0, horizontal: 30.0),
+                      vertical: 50.0, horizontal: 30.0),
                   child: Text(
-                    'Nenhum momento por aqui.\nOs momentos somem depois de 24 horas.',
+                    'Nenhum momento recente.\nOs momentos dos seus contatos aparecem aqui e somem em 24 horas.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: mainTextColor),
                   ),
-                );
-              }
-              return ListView.builder(
-                  itemBuilder: (context, index) => ItemDynamic(posts[index],
-                      key: ValueKey(posts[index].id)),
-                  itemCount: posts.length,
-                  physics: const NeverScrollableScrollPhysics(),
-                  shrinkWrap: true,
-                  primary: false);
-            },
-          ),
-          const SizedBox(height: 30),
-        ]),
+                ),
+              if (novos.isNotEmpty) _cabecalho('Atualizações recentes'),
+              for (int i = 0; i < novos.length; i++) linhaDe(novos[i], i),
+              if (vistos.isNotEmpty) _cabecalho('Vistos'),
+              for (int i = 0; i < vistos.length; i++)
+                linhaDe(vistos[i], novos.length + i),
+            ],
+          );
+        },
       ),
     );
-  }
-
-  void _showDialog(BuildContext context) {
-    showDialog(
-        context: context,
-        builder: (context) => CupertinoAlertDialog(actions: <Widget>[
-              CupertinoDialogAction(
-                child: Text('Tirar foto', style: TextStyles.textBlue16),
-                onPressed: () {
-                  Navigator.pop(context);
-                  _tirarFoto();
-                },
-              ),
-              CupertinoDialogAction(
-                child: Text('Escolher da galeria', style: TextStyles.textBlue16),
-                onPressed: () {
-                  Navigator.pop(context);
-                  loadAssets();
-                },
-              ),
-              CupertinoDialogAction(
-                child: Text('Só texto', style: TextStyles.textBlue16),
-                onPressed: () {
-                  Navigator.pop(context);
-                  Get.to<void>(PublishDynamicPage(maxImages: maxImages));
-                },
-              ),
-              CupertinoDialogAction(
-                child: Text('Cancelar', style: TextStyles.textRed16),
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-              )
-            ]));
-  }
-
-  Future<void> _tirarFoto() async {
-    try {
-      final XFile? foto = await ImagePicker().pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1080,
-        maxHeight: 1080,
-        imageQuality: 50,
-      );
-      if (foto == null || !mounted) return;
-      final Uint8List bytes = await foto.readAsBytes();
-      Get.to<void>(
-          PublishDynamicPage(images: <Uint8List>[bytes], maxImages: maxImages));
-    } catch (e) {
-      showToast('Não foi possível abrir a câmera: $e');
-    }
-  }
-
-  Future<void> loadAssets() async {
-    try {
-      final List<XFile>? fotos = await ImagePicker().pickMultiImage(
-        maxWidth: 1080,
-        maxHeight: 1080,
-        imageQuality: 50,
-      );
-      if (fotos == null || fotos.isEmpty || !mounted) return;
-      final List<Uint8List> bytes = <Uint8List>[];
-      for (final XFile f in fotos.take(maxImages)) {
-        bytes.add(await f.readAsBytes());
-      }
-      Get.to<void>(PublishDynamicPage(images: bytes, maxImages: maxImages));
-    } catch (e) {
-      showToast('Não foi possível abrir a galeria: $e');
-    }
   }
 }
