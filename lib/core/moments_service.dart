@@ -53,8 +53,17 @@ class MomentPost {
   final int exp; // expiração (ms)
   final bool mine;
   final List<Uint8List> images;
-  final List<Map<String, String>> likes; // {id, name}
-  final List<MomentComment> comments;
+  final List<Map<String, String>> likes; // {id, name} (quem reagiu com ❤)
+  final List<MomentComment> comments; // legado (não usado na tela de status)
+
+  /// Cor de fundo (ARGB) dos cartões só de texto; null = post com foto.
+  final int? bg;
+
+  /// Quem viu (só no MEU post): {id, name, ts}.
+  final List<Map<String, dynamic>> views;
+
+  /// Já vi este post de outra pessoa (controla o anel verde/cinza).
+  final bool seen;
 
   const MomentPost({
     required this.id,
@@ -67,6 +76,9 @@ class MomentPost {
     required this.images,
     required this.likes,
     required this.comments,
+    this.bg,
+    this.views = const <Map<String, dynamic>>[],
+    this.seen = false,
   });
 
   Duration get restante =>
@@ -83,6 +95,9 @@ class MomentPost {
         'images': images,
         'likes': likes,
         'comments': comments.map((MomentComment c) => c.toMap()).toList(),
+        'bg': bg,
+        'views': views,
+        'seen': seen,
       };
 
   static MomentPost fromMap(Map<dynamic, dynamic> m) {
@@ -103,6 +118,11 @@ class MomentPost {
       comments: ((m['comments'] as List?) ?? const <dynamic>[])
           .map((dynamic e) => MomentComment.fromMap(e as Map))
           .toList(),
+      bg: (m['bg'] as num?)?.toInt(),
+      views: ((m['views'] as List?) ?? const <dynamic>[])
+          .map((dynamic e) => Map<String, dynamic>.from(e as Map))
+          .toList(),
+      seen: m['seen'] == true,
     );
   }
 }
@@ -267,6 +287,18 @@ class MomentsService {
     return post.authorName;
   }
 
+  /// Nome de quem viu/reagiu: o apelido que eu dei ao contato, senão o nome
+  /// que a pessoa informou, senão o e-mail.
+  String nomeDeId(String id, String? padrao) {
+    for (final Map<String, dynamic> c in SignalLocalStore.getContacts()) {
+      if (c['phone'] == id) {
+        final dynamic nome = c['name'];
+        if (nome is String && nome.trim().isNotEmpty) return nome;
+      }
+    }
+    return (padrao != null && padrao.trim().isNotEmpty) ? padrao : id;
+  }
+
   String _meuNome() {
     final dynamic nome = SignalLocalStore.getSelfProfile(_meuId)?['name'];
     if (nome is String && nome.trim().isNotEmpty) return nome;
@@ -293,6 +325,7 @@ class MomentsService {
   Future<void> publicar({
     required String texto,
     required List<Uint8List> imagens,
+    int? bg,
   }) async {
     if (!_ativo) throw StateError('Moments não iniciado.');
     final String limpo = texto.trim();
@@ -323,12 +356,13 @@ class MomentsService {
       images: imagens,
       likes: <Map<String, String>>[],
       comments: <MomentComment>[],
+      bg: bg,
     ));
 
     // 2) Cifra uma vez com a chave do post.
     final Uint8List chave = MediaCrypto.gerarChave();
     final Uint8List blob =
-        MediaCrypto.cifrar(chave, _empacotar(limpo, imagens));
+        MediaCrypto.cifrar(chave, _empacotar(limpo, imagens, bg));
     final List<Uint8List> partes = <Uint8List>[];
     for (int i = 0; i < blob.length; i += tamanhoParte) {
       partes.add(Uint8List.sublistView(
@@ -389,6 +423,27 @@ class MomentsService {
     for (final String amigo in _amigos()) {
       unawaited(_enviarControle(amigo, envelope));
     }
+  }
+
+  // ---------------------------------------------------------- visualização
+
+  /// Post atualizado (ou null se já expirou/foi apagado).
+  MomentPost? obter(String id) => _ler(id);
+
+  /// Marca como visto neste aparelho e avisa o autor (cifrado, uma vez só).
+  Future<void> marcarVisto(MomentPost post) async {
+    if (post.mine) return;
+    final MomentPost? atual = _ler(post.id);
+    if (atual == null || atual.seen) return;
+    await _salvar(_copiar(atual, seen: true));
+    await _enviarControle(
+      post.author,
+      jsonEncode(<String, dynamic>{
+        't': 'mview',
+        'id': post.id,
+        'name': _meuNome(),
+      }),
+    );
   }
 
   // --------------------------------------------------- curtir / comentar
@@ -565,6 +620,7 @@ class MomentsService {
         images: conteudo['images'] as List<Uint8List>,
         likes: <Map<String, String>>[],
         comments: <MomentComment>[],
+        bg: conteudo['bg'] as int?,
       ));
     } catch (e) {
       debugPrint('[Moments] não consegui abrir o post: $e');
@@ -594,6 +650,21 @@ class MomentsService {
             await _box?.delete(id);
             _avisar();
           }
+          break;
+        case 'mview':
+          // Quem viu só vale no MEU post.
+          if (!post.mine) return;
+          if (post.views.any((Map<String, dynamic> v) => v['id'] == from)) {
+            return;
+          }
+          await _salvar(_copiar(post, views: <Map<String, dynamic>>[
+            ...post.views,
+            <String, dynamic>{
+              'id': from,
+              'name': (env['name'] as String?) ?? from,
+              'ts': DateTime.now().millisecondsSinceEpoch,
+            },
+          ]));
           break;
         case 'mreact':
           // Curtidas e comentários só valem no MEU post.
@@ -670,6 +741,8 @@ class MomentsService {
     MomentPost p, {
     List<Map<String, String>>? likes,
     List<MomentComment>? comments,
+    List<Map<String, dynamic>>? views,
+    bool? seen,
   }) {
     return MomentPost(
       id: p.id,
@@ -682,6 +755,9 @@ class MomentsService {
       images: p.images,
       likes: likes ?? p.likes,
       comments: comments ?? p.comments,
+      bg: p.bg,
+      views: views ?? p.views,
+      seen: seen ?? p.seen,
     );
   }
 
@@ -701,11 +777,12 @@ class MomentsService {
   }
 
   /// [4 bytes: tamanho do JSON][JSON {text, sizes}][foto 1][foto 2]...
-  Uint8List _empacotar(String texto, List<Uint8List> imagens) {
+  Uint8List _empacotar(String texto, List<Uint8List> imagens, int? bg) {
     final Uint8List cabecalho = Uint8List.fromList(utf8.encode(jsonEncode(
         <String, dynamic>{
       'text': texto,
       'sizes': imagens.map((Uint8List b) => b.length).toList(),
+      'bg': bg,
     })));
     final BytesBuilder b = BytesBuilder(copy: false);
     final ByteData tam = ByteData(4)..setUint32(0, cabecalho.length);
@@ -731,6 +808,7 @@ class MomentsService {
     return <String, dynamic>{
       'text': (cab['text'] as String?) ?? '',
       'images': imagens,
+      'bg': (cab['bg'] as num?)?.toInt(),
     };
   }
 
