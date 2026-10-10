@@ -27,6 +27,7 @@ class _ContentMsgState extends State<ContentMsg> {
     }
     if (widget.msg?.elemType == MessageElemType.V2TIM_ELEM_TYPE_TEXT) {
       str = widget.msg?.textElem?.text ?? "";
+      if (str!.startsWith('[gif]')) str = '[GIF]';
     } else if (widget.msg?.elemType == MessageElemType.V2TIM_ELEM_TYPE_IMAGE) {
       str = '[图片]';
     } else if (widget.msg?.elemType == MessageElemType.V2TIM_ELEM_TYPE_SOUND) {
