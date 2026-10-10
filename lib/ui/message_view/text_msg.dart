@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:tencent_cloud_chat_sdk/models/v2_tim_message.dart';
+import 'package:wechat_flutter/ui/message_view/gif_bolha.dart';
 import 'package:wechat_flutter/ui/message_view/msg_avatar.dart';
 import 'package:wechat_flutter/ui/message_view/text_item_container.dart';
 
@@ -55,13 +56,16 @@ class TextMsg extends StatelessWidget {
   Widget build(BuildContext context) {
     final GlobalModel globalModel = Provider.of<GlobalModel>(context);
     final bool self = model.sender == globalModel.account;
+    final String? gifUrl = GifBolha.extrair(text);
     List<Widget> body = <Widget>[
       MsgAvatar(model: model, globalModel: globalModel),
-      TextItemContainer(
-        text: text ?? '文字为空',
-        action: '',
-        isMyself: self,
-      ),
+      gifUrl != null
+          ? GifBolha(url: gifUrl, meu: self)
+          : TextItemContainer(
+              text: text ?? '文字为空',
+              action: '',
+              isMyself: self,
+            ),
       if (self) _Vistos(model.status),
       const Spacer(),
     ];
