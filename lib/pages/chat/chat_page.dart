@@ -87,6 +87,11 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  /// GIF do Giphy: vai como mensagem `[gif]<url>` (cifrada como qualquer texto).
+  Future<void> _enviarGif(String url) async {
+    await sendTextMsg(widget.id, widget.type, '[gif]$url');
+  }
+
   void insertText(String text) {
     final TextEditingValue value = _textController.value;
     final int start = value.selection.baseOffset;
@@ -426,6 +431,7 @@ class _ChatPageState extends State<ChatPage> {
         height: _emojiState ? keyboardHeight : 0,
         bottomInset: bottomSafe,
         onEmojiSelected: insertText,
+        onGifSelected: _enviarGif,
       ),
       onTap: () {},
     );
