@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:wechat_flutter/core/giphy_service.dart';
+import 'package:wechat_flutter/pages/chat/gif_search_page.dart';
+import 'package:wechat_flutter/ui/chat/gif_grade.dart';
 import 'package:wechat_flutter/ui/edit/emoji_text.dart';
 
 enum _AbaEmoji { emoji, gif, figurinha }
@@ -17,10 +20,14 @@ class EmojiPanel extends StatefulWidget {
   final double bottomInset;
   final ValueChanged<String> onEmojiSelected;
 
+  /// Recebe a URL do GIF escolhido (a aba GIF usa o Giphy).
+  final ValueChanged<String>? onGifSelected;
+
   const EmojiPanel({
     Key? key,
     required this.height,
     required this.onEmojiSelected,
+    this.onGifSelected,
     this.bottomInset = 0.0,
   }) : super(key: key);
 
@@ -126,6 +133,57 @@ class _EmojiPanelState extends State<EmojiPanel> {
     );
   }
 
+  /// Aba GIF: botão de busca + tendências do Giphy.
+  Widget _gifs() {
+    return Column(
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12.0, 2.0, 12.0, 4.0),
+          child: GestureDetector(
+            onTap: _abrirBuscaDeGif,
+            child: Container(
+              height: 36.0,
+              padding: const EdgeInsets.symmetric(horizontal: 14.0),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(18.0),
+              ),
+              child: Row(
+                children: const <Widget>[
+                  Icon(Icons.search, size: 20.0, color: _icone),
+                  SizedBox(width: 8.0),
+                  Text('Buscar GIFs',
+                      style: TextStyle(color: Colors.black45, fontSize: 15.0)),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: GifGrade(
+            key: const ValueKey<String>('gif-tendencias'),
+            carregar: (int offset) =>
+                GiphyService.instance.tendencias(offset: offset),
+            aoSelecionar: (GiphyGif g) => widget.onGifSelected?.call(g.url),
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.only(top: 2.0, bottom: 4.0 + widget.bottomInset),
+          child: Text('Powered by GIPHY',
+              style: TextStyle(fontSize: 11.0, color: Colors.grey[500])),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _abrirBuscaDeGif() async {
+    final GiphyGif? escolhido = await Navigator.of(context).push<GiphyGif>(
+      MaterialPageRoute<GiphyGif>(
+          builder: (BuildContext c) => const GifSearchPage()),
+    );
+    if (escolhido != null) widget.onGifSelected?.call(escolhido.url);
+  }
+
   Widget _emBreve(IconData icone, String titulo) {
     return Padding(
       padding: EdgeInsets.only(bottom: widget.bottomInset),
@@ -158,7 +216,7 @@ class _EmojiPanelState extends State<EmojiPanel> {
       case _AbaEmoji.emoji:
         return _gradeDeEmojis();
       case _AbaEmoji.gif:
-        return _emBreve(Icons.gif, 'GIFs');
+        return _gifs();
       case _AbaEmoji.figurinha:
         return _emBreve(Icons.sticky_note_2_outlined, 'Figurinhas');
     }
