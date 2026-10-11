@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 import 'package:hive/hive.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -8,6 +9,7 @@ import 'package:tencent_cloud_chat_sdk/enum/message_elem_type.dart';
 import 'package:wechat_flutter/core/call_service.dart';
 import 'package:wechat_flutter/core/moments_service.dart';
 import 'package:wechat_flutter/core/profile_service.dart';
+import 'package:wechat_flutter/core/session_healing.dart';
 import 'package:wechat_flutter/im/local_store.dart';
 import 'package:wechat_flutter/tools/event/im_event.dart';
 
@@ -140,6 +142,8 @@ class SignalCore {
     _inicializado = true;
     // Momentos efêmeros (Broadcast + Hive local).
     unawaited(MomentsService.instance.iniciar(meuUserId));
+    // Autorrecuperação de sessão (sinalização volátil).
+    unawaited(SessionHealing.instance.iniciar(meuUserId));
   }
 
   Future<void> _gerarChavesNovas() async {
@@ -282,6 +286,7 @@ class SignalCore {
 
   Future<void> encerrarCasulo() async {
     await MomentsService.instance.parar();
+    await SessionHealing.instance.parar();
     final canal = _canal;
     _canal = null;
     if (canal != null) {
@@ -298,6 +303,7 @@ class SignalCore {
       _escutarMensagensEntrantes();
       await verificarMensagensPendentes();
       await MomentsService.instance.reconectar();
+      await SessionHealing.instance.reconectar();
     } catch (e) {
       print('Erro ao reconectar o Casulo: $e');
     }
@@ -442,6 +448,14 @@ class SignalCore {
       _sessoesEstabelecidas.remove(userId);
     }
 
+    // Sem sessão (ex.: acabei de descartá-la para renegociar): se a pessoa
+    // trocou de chaves, aceita a identidade nova que ela publicou.
+    final conhecidaSemSessao = await _identityKeyStore.getIdentity(address);
+    if (conhecidaSemSessao != null &&
+        _chaveEmBase64(conhecidaSemSessao) != _chaveEmBase64(identityKey)) {
+      await _identityKeyStore.saveIdentity(address, identityKey);
+    }
+
     final preKeyResult = await _supabase
         .rpc('consume_one_time_prekey', params: {'target_user_id': userId});
 
@@ -519,7 +533,7 @@ class SignalCore {
   /// Envia uma mensagem de texto. O [msgId] viaja dentro do conteúdo
   /// criptografado e é a chave dos recibos de entrega/leitura.
   Future<void> enviarMensagemSegura(String numeroDestino, String textoPuro,
-      {String? msgId}) async {
+      {String? msgId, bool push = true}) async {
     if (!_inicializado) {
       throw StateError(
           'SignalCore não inicializado. Chame inicializarCasulo() primeiro.');
@@ -537,7 +551,8 @@ class SignalCore {
       'text': textoPuro,
       'pk': base64Encode(chavePerfil),
     });
-    await _serializar<void>(() => _cifrarEEnviar(numeroDestino, envelope));
+    await _serializar<void>(
+        () => _cifrarEEnviar(numeroDestino, envelope, push: push));
   }
 
   /// Entrega a minha Profile Key (criptografada, sem notificação) a quem já
@@ -667,13 +682,28 @@ class SignalCore {
       address,
     );
 
-    Uint8List textoPlanoBytes;
-    if (payloadTipo == CiphertextMessage.prekeyType) {
-      final mensagem = PreKeySignalMessage(payloadBytes);
-      textoPlanoBytes = await sessionCipher.decrypt(mensagem);
-    } else {
+    Future<Uint8List> abrir() async {
+      if (payloadTipo == CiphertextMessage.prekeyType) {
+        final mensagem = PreKeySignalMessage(payloadBytes);
+        return sessionCipher.decrypt(mensagem);
+      }
       final mensagem = SignalMessage.fromSerialized(payloadBytes);
-      textoPlanoBytes = await sessionCipher.decryptFromSignal(mensagem);
+      return sessionCipher.decryptFromSignal(mensagem);
+    }
+
+    Uint8List textoPlanoBytes;
+    try {
+      textoPlanoBytes = await abrir();
+    } catch (e) {
+      // A pessoa trocou de chaves (reinstalou o app): aceita a identidade
+      // nova que ela publicou e tenta mais uma vez.
+      if (e.runtimeType.toString() == 'UntrustedIdentityException' &&
+          payloadTipo == CiphertextMessage.prekeyType) {
+        await _aceitarNovaIdentidade(remetente);
+        textoPlanoBytes = await abrir();
+      } else {
+        rethrow;
+      }
     }
 
     _sessoesEstabelecidas.add(remetente);
@@ -703,11 +733,14 @@ class SignalCore {
       // Reentrega de algo que já foi processado: só limpa o servidor.
       if (e.runtimeType.toString() != 'DuplicateMessageException') {
         print('Não consegui descriptografar mensagem de $remetente: $e');
-        await _registrarFalhaDescriptografia(remetente);
+        await _aoFalharDecifrar(remetente, linha);
       }
       await _apagarLinha(linhaId);
       return;
     }
+
+    // A sessão está boa: se havia uma recuperação em andamento, termina.
+    await _aoDecifrarComSucesso(remetente);
 
     try {
       await _tratarConteudo(remetente, textoBruto);
@@ -744,6 +777,10 @@ class SignalCore {
         break;
       case 'rcpt':
         await _receberRecibo(remetente, envelope);
+        break;
+      case 'rst':
+        // Pacote de inicialização da sessão renegociada: o simples fato de
+        // ter sido decifrado já restabeleceu a sessão.
         break;
       case 'call':
         // Convite de chamada de voz/vídeo (cifrado, pela caixa do chat).
@@ -808,6 +845,15 @@ class SignalCore {
 
   Future<void> _receberTexto(String remetente, String texto,
       {String? msgId}) async {
+    // Mensagem repetida (por exemplo, reenviada na recuperação de sessão):
+    // não duplica a bolha, só avisa uma vez e reconfirma a entrega.
+    if (msgId != null &&
+        SignalLocalStore.getMessages(remetente)
+            .any((Map<String, dynamic> m) => m['msgID'] == msgId)) {
+      await _avisarRepetida(remetente, msgId);
+      return;
+    }
+
     final int agora = DateTime.now().millisecondsSinceEpoch;
     final String msgID = msgId ?? 'in_${remetente}_$agora';
 
@@ -843,15 +889,190 @@ class SignalCore {
     eventBusNewMsg.value = EventBusNewMsg(remetente);
   }
 
-  Future<void> _registrarFalhaDescriptografia(String remetente) async {
-    final int agora = DateTime.now().millisecondsSinceEpoch;
+  // ------------------------------------------------ autorrecuperação de sessão
+
+  final Map<String, List<int>> _avisosRepetida = <String, List<int>>{};
+
+  /// Uma mensagem de [remetente] não abriu: mostra UM aviso na conversa e pede
+  /// (por sinal volátil) que a pessoa renegocie a sessão.
+  /// Roda dentro da fila do Signal: não espera nada demorado.
+  Future<void> _aoFalharDecifrar(
+      String remetente, Map<String, dynamic> linha) async {
+    await _mostrarAvisoRestaurando(remetente);
+    final int? criadoEm =
+        DateTime.tryParse('${linha['created_at']}')?.millisecondsSinceEpoch;
+    SessionHealing.instance.aoFalharDecifrar(remetente, criadoEm: criadoEm);
+  }
+
+  Future<void> _mostrarAvisoRestaurando(String remetente) async {
+    final String id = 'heal_$remetente';
+    final bool jaTem = SignalLocalStore.getMessages(remetente)
+        .any((Map<String, dynamic> m) => m['msgID'] == id);
+    if (jaTem) return;
     await _salvarMensagemRecebida(
       remetente,
-      'fail_${remetente}_$agora',
-      '⚠ Não foi possível descriptografar esta mensagem. '
-      'Peça para a pessoa enviar de novo.',
+      id,
+      'Restaurando conexão segura…',
       comRecibo: false,
     );
+  }
+
+  /// A sessão com [remetente] voltou a funcionar: tira o aviso.
+  Future<void> _aoDecifrarComSucesso(String remetente) async {
+    if (!SessionHealing.instance.temPendencia(remetente)) return;
+    SessionHealing.instance.aoRestaurar(remetente);
+
+    final String id = 'heal_$remetente';
+    await SignalLocalStore.removeMessage(remetente, id);
+
+    final conversas = SignalLocalStore.getConversations()
+        .where((Map<String, dynamic> c) => c['conversationID'] == remetente)
+        .toList();
+    if (conversas.isNotEmpty) {
+      final Map<String, dynamic> c = Map<String, dynamic>.from(conversas.first);
+      final dynamic ultima = c['lastMessage'];
+      if (ultima is Map && ultima['msgID'] == id) {
+        final restantes = SignalLocalStore.getMessages(remetente);
+        if (restantes.isNotEmpty) {
+          final Map<String, dynamic> m = restantes.last;
+          c['lastMessage'] = <String, dynamic>{
+            'msgID': m['msgID'],
+            'timestamp': m['timestamp'],
+            'sender': m['sender'],
+            'isSelf': m['isSelf'],
+            'elemType': m['elemType'],
+            'text': m['text'],
+          };
+        } else {
+          c['lastMessage'] = <String, dynamic>{...ultima, 'text': ''};
+        }
+        final int naoLidas = (c['unreadCount'] as int?) ?? 0;
+        c['unreadCount'] = naoLidas > 0 ? naoLidas - 1 : 0;
+        await SignalLocalStore.upsertConversation(c);
+      }
+    }
+    eventBusNewMsg.value = EventBusNewMsg(remetente);
+  }
+
+  /// A pessoa reinstalou o app e mandou um pacote de sessão novo: aceita a
+  /// identidade que ela publicou (como o Signal faz por padrão).
+  Future<void> _aceitarNovaIdentidade(String userId) async {
+    final bundleRow = await _supabase
+        .from('signal_bundles')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (bundleRow == null) {
+      throw StateError('$userId não tem bundle publicado.');
+    }
+    final identityKey = IdentityKey(
+        Curve.decodePoint(base64Decode(bundleRow['identity_key']), 0));
+    final address = SignalProtocolAddress(userId, 1);
+    if (await _sessionStore.containsSession(address)) {
+      await _sessionStore.deleteSession(address);
+    }
+    _sessoesEstabelecidas.remove(userId);
+    await _identityKeyStore.saveIdentity(address, identityKey);
+  }
+
+  /// Pedido de [userId] (recebido pelo canal volátil): descarta a sessão,
+  /// abre uma nova com o bundle que ele publicou, manda o pacote de
+  /// inicialização e reenvia o que ele ainda não recebeu.
+  Future<void> renegociarSessao(String userId, {int? desde}) async {
+    if (!_inicializado) return;
+
+    await _serializar<void>(() async {
+      final address = SignalProtocolAddress(userId, 1);
+      if (await _sessionStore.containsSession(address)) {
+        await _sessionStore.deleteSession(address);
+      }
+      _sessoesEstabelecidas.remove(userId);
+      await _persistirEstado();
+
+      // Pacote de inicialização: _cifrarEEnviar cria a sessão nova (PreKey)
+      // e o destinatário a grava no Hive dele ao decifrar.
+      final String inicio = jsonEncode(<String, dynamic>{
+        'v': 1,
+        't': 'rst',
+        'id': 'rst_${DateTime.now().millisecondsSinceEpoch}',
+      });
+      await _cifrarEEnviar(userId, inicio, push: false);
+    });
+
+    await _reenviarPendentes(userId, desde: desde);
+  }
+
+  /// Reenvia (do histórico local) as minhas mensagens que [userId] não
+  /// confirmou. No máximo 20, só das últimas 24 horas.
+  Future<void> _reenviarPendentes(String userId, {int? desde}) async {
+    final int agora = DateTime.now().millisecondsSinceEpoch;
+    final int limite = max(desde ?? 0, agora - 24 * 60 * 60 * 1000);
+
+    final List<Map<String, dynamic>> pendentes =
+        SignalLocalStore.getMessages(userId).where((Map<String, dynamic> m) {
+      if (m['isSelf'] != true) return false;
+      if (m['elemType'] != MessageElemType.V2TIM_ELEM_TYPE_TEXT) return false;
+      final int? status = (m['status'] as num?)?.toInt();
+      if (status == StatusMensagem.entregue || status == StatusMensagem.lida) {
+        return false;
+      }
+      final int ts = (m['timestamp'] as num?)?.toInt() ?? 0;
+      // Mensagem acabada de sair (em trânsito) não precisa de reenvio.
+      if (ts < limite || agora - ts < 15 * 1000) return false;
+      final dynamic texto = m['text'];
+      return texto is String && texto.isNotEmpty && m['msgID'] is String;
+    }).toList();
+
+    final List<Map<String, dynamic>> ultimos = pendentes.length > 20
+        ? pendentes.sublist(pendentes.length - 20)
+        : pendentes;
+
+    for (final Map<String, dynamic> m in ultimos) {
+      final String id = m['msgID'] as String;
+      try {
+        // Mesmo msgID: se o destinatário já tiver a mensagem, ele descarta a
+        // cópia e avisa "Mensagem já enviada".
+        await enviarMensagemSegura(userId, m['text'] as String,
+            msgId: id, push: false);
+        await SignalLocalStore.upgradeMessageStatus(
+            userId, <String>[id], StatusMensagem.enviada);
+      } catch (e) {
+        print('Não consegui reenviar $id para $userId: $e');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+    }
+    eventBusNewMsg.value = EventBusNewMsg(userId);
+  }
+
+  /// Cópia repetida de uma mensagem que já está aqui. Reconfirma a entrega
+  /// (o remetente para de reenviar) e mostra no máximo 3 avisos por 10 minutos
+  /// por pessoa; o resto é descartado em silêncio (anti-spam).
+  Future<void> _avisarRepetida(String remetente, String msgId) async {
+    try {
+      await _enviarReciboInterno(remetente, 'delivery', <String>[msgId]);
+    } catch (_) {}
+
+    final int agora = DateTime.now().millisecondsSinceEpoch;
+    final List<int> lista =
+        _avisosRepetida.putIfAbsent(remetente, () => <int>[]);
+    lista.removeWhere((int t) => agora - t > 10 * 60 * 1000);
+    if (lista.length >= 3) return;
+    lista.add(agora);
+
+    await SignalLocalStore.appendMessage(remetente, <String, dynamic>{
+      'msgID': 'dup_$msgId',
+      'timestamp': agora,
+      'sender': remetente,
+      'userID': remetente,
+      'groupID': null,
+      'isSelf': false,
+      'elemType': MessageElemType.V2TIM_ELEM_TYPE_TEXT,
+      'text': 'Mensagem já enviada: a cópia repetida foi ignorada.',
+      'status': 3,
+      'receiptable': false,
+      'readReceiptSent': false,
+    });
+    eventBusNewMsg.value = EventBusNewMsg(remetente);
   }
 
   Future<String> enviarFotoTemporaria(
