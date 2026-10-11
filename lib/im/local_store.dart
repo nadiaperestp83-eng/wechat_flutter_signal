@@ -48,6 +48,17 @@ class SignalLocalStore {
     await _messages.put(conversationId, jsonEncode(atual));
   }
 
+  /// Remove uma mensagem (usado para os avisos que somem sozinhos).
+  static Future<void> removeMessage(
+    String conversationId,
+    String msgID,
+  ) async {
+    final atual = getMessages(conversationId);
+    final novo = atual.where((m) => m['msgID'] != msgID).toList();
+    if (novo.length == atual.length) return;
+    await _messages.put(conversationId, jsonEncode(novo));
+  }
+
   static Future<void> updateMessageStatus(
     String conversationId,
     String msgID,
