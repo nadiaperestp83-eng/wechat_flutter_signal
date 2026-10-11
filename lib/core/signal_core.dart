@@ -450,7 +450,14 @@ class SignalCore {
 
     // Sem sessão (ex.: acabei de descartá-la para renegociar): se a pessoa
     // trocou de chaves, aceita a identidade nova que ela publicou.
-    final conhecidaSemSessao = await _identityKeyStore.getIdentity(address);
+    // Contato novo não tem identidade guardada: dependendo da versão da
+    // biblioteca a leitura devolve null ou lança erro, então protege a leitura.
+    IdentityKey? conhecidaSemSessao;
+    try {
+      conhecidaSemSessao = await _identityKeyStore.getIdentity(address);
+    } catch (_) {
+      conhecidaSemSessao = null;
+    }
     if (conhecidaSemSessao != null &&
         _chaveEmBase64(conhecidaSemSessao) != _chaveEmBase64(identityKey)) {
       await _identityKeyStore.saveIdentity(address, identityKey);
