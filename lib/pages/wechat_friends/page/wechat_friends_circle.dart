@@ -65,7 +65,10 @@ class _AnelPainter extends CustomPainter {
 /// Aba Momentos no estilo "status": meu status no topo, depois as
 /// atualizações recentes e as já vistas. Tudo some em 24 horas.
 class WeChatFriendsCircle extends StatefulWidget {
-  WeChatFriendsCircle({Key? key}) : super(key: key);
+  /// true = é uma aba da barra inferior (a barra do topo é a da própria aba).
+  final bool comoAba;
+
+  WeChatFriendsCircle({Key? key, this.comoAba = false}) : super(key: key);
 
   @override
   createState() => _WeChatFriendsCircleState();
@@ -281,7 +284,7 @@ class _WeChatFriendsCircleState extends State<WeChatFriendsCircle> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: ComMomBar(title: 'Momentos'),
+      appBar: widget.comoAba ? null : ComMomBar(title: 'Momentos'),
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
