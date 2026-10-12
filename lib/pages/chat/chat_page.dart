@@ -80,8 +80,18 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> getChatMsgData() async {
     final List<V2TimMessage> listChat =
         await ChatDataRep().repData(widget.id, widget.type);
+    // A lista do chat é invertida (reverse: true): o índice 0 aparece embaixo.
+    // Por isso a ordem precisa ser da mais NOVA para a mais antiga, para que a
+    // mensagem mais nova fique embaixo e a mais antiga em cima (como no
+    // WhatsApp). Ordena pela hora; em empate mantém a ordem original.
+    final List<MapEntry<int, V2TimMessage>> ordenadas =
+        listChat.asMap().entries.toList()
+          ..sort((MapEntry<int, V2TimMessage> a, MapEntry<int, V2TimMessage> b) {
+            final int c = (b.value.timestamp ?? 0).compareTo(a.value.timestamp ?? 0);
+            return c != 0 ? c : a.key.compareTo(b.key);
+          });
     chatData.clear();
-    chatData.addAll(listChat.reversed);
+    chatData.addAll(ordenadas.map((MapEntry<int, V2TimMessage> e) => e.value));
     if (mounted) {
       setState(() {});
     }
