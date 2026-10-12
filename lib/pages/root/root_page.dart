@@ -92,14 +92,14 @@ class _RootPageState extends State<RootPage> {
         selectIcon: const _IconeFork('assets/images/contact/ic_voice.png', 25.0),
         page: const CallsPage(),
       ),
-      // Momentos: tocar abre a tela direto (não é uma aba).
+      // Momentos: aba de verdade (a barra inferior continua visível).
+      // O visualizador de status abre em tela cheia ao tocar num status.
       TabBarModel(
         title: trApp('Momentos', en: 'Moments', zh: '朋友圈'),
         icon: const _IconeFork('assets/images/discover/ff_Icon_album.webp', 26.0),
         selectIcon:
             const _IconeFork('assets/images/discover/ff_Icon_album.webp', 26.0),
-        page: const SizedBox.shrink(),
-        aoTocar: () => Get.to<void>(WeChatFriendsCircle()),
+        page: WeChatFriendsCircle(comoAba: true),
       ),
       TabBarModel(
         title: S.of(context).me,
