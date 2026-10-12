@@ -212,6 +212,8 @@ class CallService {
     );
     _iniciarSessao(s);
     mensagem.value = 'Chamando…';
+    // Toque de "chamando" até a outra pessoa atender.
+    unawaited(_toqueChamando(true, video: video));
     unawaited(_abrirTela());
 
     try {
@@ -306,6 +308,7 @@ class CallService {
     if (s != null && s.id == id && s.peer == from) {
       switch (tipo) {
         case 'accept':
+          unawaited(_toqueChamando(false));
           if (estado.value == EstadoChamada.chamando) {
             estado.value = EstadoChamada.conectando;
             mensagem.value = 'Conectando…';
@@ -538,6 +541,7 @@ class CallService {
   void _remotoEntrou(_Sessao s, int uid) {
     if (_sessao != s) return;
     s.conectou = true;
+    unawaited(_toqueChamando(false));
     _tempoToque?.cancel();
     remotoUid.value = uid;
     estado.value = EstadoChamada.conectada;
@@ -605,6 +609,7 @@ class CallService {
 
     _tempoToque?.cancel();
     _relogio?.cancel();
+    unawaited(_toqueChamando(false));
     final int duracao = segundos.value;
 
     // Histórico (só neste aparelho).
@@ -698,6 +703,20 @@ class CallService {
       if (video) Permission.camera,
     ].request();
     return r.values.every((PermissionStatus s) => s.isGranted);
+  }
+
+  /// Toque de "chamando" (Android ToneGenerator, sem arquivo de áudio).
+  Future<void> _toqueChamando(bool tocar, {bool video = false}) async {
+    try {
+      if (tocar) {
+        await _nativo
+            .invokeMethod<bool>('tocarChamando', <String, dynamic>{'video': video});
+      } else {
+        await _nativo.invokeMethod<bool>('pararChamando');
+      }
+    } catch (e) {
+      debugPrint('[Chamadas] toque de chamando: $e');
+    }
   }
 
   Future<void> _servico(bool ligar, {bool video = false}) async {
