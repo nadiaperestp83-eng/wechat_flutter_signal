@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:wechat_flutter/core/presence_service.dart';
 import 'package:wechat_flutter/im/all_im.dart';
+import 'package:wechat_flutter/pages/settings/account_page.dart';
 import 'package:wechat_flutter/pages/settings/language_page.dart';
 import 'package:wechat_flutter/provider/global_model.dart';
 import 'package:wechat_flutter/tools/tr_app.dart';
@@ -206,7 +207,11 @@ class SettingsPage extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 24.0),
         children: <Widget>[
           _grupo(<Widget>[
-            emBreve(Icons.account_circle_outlined, 'Conta', 'Account'),
+            _linha(
+              icone: Icons.account_circle_outlined,
+              titulo: trApp('Conta', en: 'Account', zh: '账号'),
+              aoTocar: () => Get.to<void>(const AccountPage()),
+            ),
             emBreve(Icons.favorite_border, 'Doar para o Kakaô', 'Donate to Kakaô'),
           ]),
           const SizedBox(height: 10.0),
