@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:wechat_flutter/core/presence_service.dart';
 import 'package:wechat_flutter/im/all_im.dart';
 import 'package:wechat_flutter/pages/settings/account_page.dart';
+import 'package:wechat_flutter/pages/settings/chats_settings_page.dart';
 import 'package:wechat_flutter/pages/settings/language_page.dart';
 import 'package:wechat_flutter/provider/global_model.dart';
 import 'package:wechat_flutter/tools/tr_app.dart';
@@ -223,7 +224,11 @@ class SettingsPage extends StatelessWidget {
               valor: model.currentLanguage,
               aoTocar: () => Get.to<void>(LanguagePage()),
             ),
-            emBreve(Icons.chat_bubble_outline, 'Chats', 'Chats'),
+            _linha(
+              icone: Icons.chat_bubble_outline,
+              titulo: trApp('Chats', en: 'Chats'),
+              aoTocar: () => Get.to<void>(const ChatsSettingsPage()),
+            ),
             emBreve(Icons.notifications_none, 'Notificações', 'Notifications'),
             _linha(
               icone: Icons.lock_outline,
