@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:wechat_flutter/core/presence_service.dart';
 import 'package:wechat_flutter/im/all_im.dart';
 import 'package:wechat_flutter/pages/settings/account_page.dart';
+import 'package:wechat_flutter/pages/settings/backup_page.dart';
 import 'package:wechat_flutter/pages/settings/chats_settings_page.dart';
 import 'package:wechat_flutter/pages/settings/language_page.dart';
 import 'package:wechat_flutter/provider/global_model.dart';
@@ -235,7 +236,11 @@ class SettingsPage extends StatelessWidget {
               titulo: trApp('Privacidade', en: 'Privacy', zh: '隐私'),
               aoTocar: () => Get.to<void>(const _PrivacidadePage()),
             ),
-            emBreve(Icons.history, 'Backups', 'Backups'),
+            _linha(
+              icone: Icons.history,
+              titulo: trApp('Backups', en: 'Backups'),
+              aoTocar: () => Get.to<void>(const BackupPage()),
+            ),
             emBreve(Icons.data_usage, 'Dados e armazenamento', 'Data and storage'),
           ]),
           const SizedBox(height: 10.0),
