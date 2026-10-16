@@ -1,6 +1,12 @@
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:wechat_flutter/core/backup_service.dart';
 import 'package:wechat_flutter/im/login_handle.dart';
 import 'package:wechat_flutter/pages/settings/language_page.dart';
 import 'package:wechat_flutter/tools/wechat_flutter.dart';
@@ -30,6 +36,12 @@ class _LoginBeginPageState extends State<LoginBeginPage> {
     super.initState();
     _emailC.addListener(() => setState(() {}));
     _senhaC.addListener(() => setState(() {}));
+    // Backup restaurado antes: já preenche o e-mail da conta dele.
+    BackupService.instance.contaRestaurada().then((String? conta) {
+      if (conta != null && conta.isNotEmpty && mounted && _emailC.text.isEmpty) {
+        setState(() => _emailC.text = conta);
+      }
+    });
   }
 
   @override
@@ -71,6 +83,77 @@ class _LoginBeginPageState extends State<LoginBeginPage> {
     if (!mounted) return;
     // Se entrou, o ImLoginManager já abriu o app (Get.offAll).
     if (!entrou) setState(() => _carregando = false);
+  }
+
+  // ------------------------------------------------- restaurar backup
+
+  Future<String?> _pedirFrase() async {
+    final TextEditingController campo = TextEditingController();
+    final String? frase = await showDialog<String>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('Frase de recuperação'),
+        content: TextField(
+          controller: campo,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          maxLength: 35,
+          inputFormatters: <TextInputFormatter>[
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9 ]')),
+          ],
+          decoration: const InputDecoration(
+            hintText: '00000 00000 00000 00000 00000 00000',
+            counterText: '',
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, campo.text),
+              child: const Text('Restaurar')),
+        ],
+      ),
+    );
+    campo.dispose();
+    return frase;
+  }
+
+  Future<void> _restaurarBackup() async {
+    if (_carregando) return;
+    try {
+      final FilePickerResult? r = await FilePicker.platform
+          .pickFiles(type: FileType.any, withData: true);
+      if (r == null || r.files.isEmpty) return;
+      final PlatformFile arquivo = r.files.single;
+      Uint8List? bytes = arquivo.bytes;
+      if (bytes == null && arquivo.path != null) {
+        bytes = await File(arquivo.path!).readAsBytes();
+      }
+      if (bytes == null) {
+        showToast('Não consegui ler o arquivo.');
+        return;
+      }
+
+      final String? frase = await _pedirFrase();
+      if (frase == null || !mounted) return;
+
+      setState(() => _carregando = true);
+      final String conta = await BackupService.instance.restaurar(bytes, frase);
+      if (!mounted) return;
+      setState(() {
+        _carregando = false;
+        _emailC.text = conta;
+      });
+      showToast('Backup restaurado. Entre com $conta para continuar.');
+    } on BackupInvalido catch (e) {
+      if (mounted) setState(() => _carregando = false);
+      showToast('$e');
+    } catch (e) {
+      if (mounted) setState(() => _carregando = false);
+      showToast('Não foi possível restaurar: $e');
+    }
   }
 
   // ------------------------------------------------------------ pedaços
@@ -290,7 +373,13 @@ class _LoginBeginPageState extends State<LoginBeginPage> {
                 _termos(),
                 const SizedBox(height: 28.0),
                 _botao(),
-                const SizedBox(height: 28.0),
+                const SizedBox(height: 10.0),
+                TextButton(
+                  onPressed: _carregando ? null : _restaurarBackup,
+                  child: Text('Restaurar backup',
+                      style: _inter(15.5, FontWeight.w600, cor: _verde)),
+                ),
+                const SizedBox(height: 18.0),
                 Text(
                   'Seus dados ficam protegidos: as mensagens e chamadas '
                   'são criptografadas de ponta a ponta.',
